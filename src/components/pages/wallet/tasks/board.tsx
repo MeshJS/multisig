@@ -31,6 +31,7 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
 import { groupByColumn, isTaskSettled, reorderColumn, type ColumnOrder } from "./board-model";
 import Column from "./column";
+import styles from "./board.module.css";
 import { TaskCardBody, type TaskCardProps } from "./task-card";
 import { COLUMNS, type BoardTask, type TaskStatus } from "./types";
 
@@ -40,8 +41,7 @@ import { COLUMNS, type BoardTask, type TaskStatus } from "./types";
  * follow the pointer across containers); on drop, the parent gets one
  * `onMove(id, status, position)` and the local order re-syncs from props.
  *
- * Below `md` the columns stack into one — the same one-column collapse
- * every other wallet page makes.
+ * Columns adapt to the available board width, including sidebar and card padding.
  */
 export default function TaskBoard({
   tasks,
@@ -165,22 +165,24 @@ export default function TaskBoard({
         setOrder(groupByColumn(tasks));
       }}
     >
-      <div
-        role="region"
-        aria-label="Task board"
-        className="grid gap-3 md:grid-cols-4 md:gap-4"
-        data-testid="task-board"
-      >
-        {COLUMNS.map((column) => (
-          <Column
-            key={column.status}
-            status={column.status}
-            label={column.label}
-            tasks={order[column.status].map((id) => byId.get(id)).filter((t): t is BoardTask => !!t)}
-            selectedIds={selectedIds}
-            cardProps={cardProps}
-          />
-        ))}
+      <div className={styles.container}>
+        <div
+          role="region"
+          aria-label="Task board"
+          className={styles.board}
+          data-testid="task-board"
+        >
+          {COLUMNS.map((column) => (
+            <Column
+              key={column.status}
+              status={column.status}
+              label={column.label}
+              tasks={order[column.status].map((id) => byId.get(id)).filter((t): t is BoardTask => !!t)}
+              selectedIds={selectedIds}
+              cardProps={cardProps}
+            />
+          ))}
+        </div>
       </div>
       {/*
         Portalled to <body> on purpose. The overlay is position: fixed, and the

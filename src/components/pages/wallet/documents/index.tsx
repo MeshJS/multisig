@@ -76,6 +76,15 @@ export default function PageDocuments() {
         />
       )}
 
+      <div className="flex flex-wrap gap-4 text-sm">
+        <Link href="/getting-started#documents" className="underline underline-offset-4">
+          Document setup guide
+        </Link>
+        <Link href="/verify" className="underline underline-offset-4">
+          Verify a sign-off proof
+        </Link>
+      </div>
+
       <div className="flex flex-col gap-3">
         {documents?.map((doc) => {
           const latest = doc.versions[0];

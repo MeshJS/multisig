@@ -24,7 +24,7 @@ export default function Column({
   const { setNodeRef, isOver } = useDroppable({ id: status, data: { type: "column", status } });
   return (
     <div
-      className="flex flex-col rounded-lg border border-border/50 bg-muted/30"
+      className="flex min-w-0 flex-col rounded-lg border border-border/50 bg-muted/30"
       data-testid={`task-column-${status}`}
     >
       <div className="flex items-center justify-between p-3 pb-2">

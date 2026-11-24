@@ -227,7 +227,7 @@ export default function TaskDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-        <DialogContent className="sm:max-w-[640px]" data-testid="task-dialog">
+        <DialogContent className="grid-cols-1 [&>*]:min-w-0 sm:max-w-[640px]" data-testid="task-dialog">
           <DialogHeader>
             <DialogTitle>{taskLocked ? "Task details" : task ? "Edit task" : "New task"}</DialogTitle>
             <DialogDescription>
@@ -239,7 +239,7 @@ export default function TaskDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 py-4">
+          <div className="grid min-w-0 grid-cols-1 gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="task-title">Title</Label>
               <Input

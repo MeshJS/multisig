@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { useState } from "react";
 import { Loader2, Plug, ShieldCheck, Trash2 } from "lucide-react";
 
@@ -93,6 +94,12 @@ export default function McpConnectionsCard() {
         description="Applications you have approved over the Model Context Protocol. Revoking one ends its access."
         icon={Plug}
       >
+        <Link
+          href="/docs/mcp"
+          className="mb-3 inline-block text-sm underline underline-offset-4"
+        >
+          MCP setup guide
+        </Link>
         {isLoading ? (
           <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading connections…
@@ -105,8 +112,9 @@ export default function McpConnectionsCard() {
             <p className="text-xs text-muted-foreground">
               Point an MCP client at{" "}
               <code className="rounded bg-muted px-1">/api/mcp</code> and approve
-              it when the consent screen appears. Connections are read-only apart
-              from governance ballot drafts — they cannot sign transactions, move
+              it when the consent screen appears. Connections can read data and,
+              with permission, manage tasks and prepare ballot or unsigned
+              transaction drafts — they cannot sign transactions, move
               funds, or vote on-chain.
             </p>
           </div>

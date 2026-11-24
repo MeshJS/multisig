@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
-import { ChevronDown, ChevronUp, Wallet2, Plus, House } from "lucide-react";
+import { ChevronDown, ChevronUp, Wallet2, Plus } from "lucide-react";
 import useUserWallets from "@/hooks/useUserWallets";
 import useAppWallet from "@/hooks/useAppWallet";
 import WalletNavLink from "@/components/common/overall-layout/wallet-nav-link";
-import MenuLink from "@/components/common/overall-layout/menus/menu-link";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,23 +14,15 @@ import {
 
 interface WalletSelectorProps {
   fallbackWalletName?: string | null;
-  onClearWallet?: () => void;
 }
 
-export default function WalletSelector({ fallbackWalletName, onClearWallet }: WalletSelectorProps = {}) {
+export default function WalletSelector({ fallbackWalletName }: WalletSelectorProps = {}) {
   const router = useRouter();
   const { wallets } = useUserWallets();
   const { appWallet } = useAppWallet();
   const [open, setOpen] = useState(false);
 
   const displayName = appWallet?.name || fallbackWalletName || "Select Wallet";
-
-  const handleHomeClick = () => {
-    if (onClearWallet) {
-      onClearWallet();
-    }
-    void router.push("/");
-  };
 
   // Close dropdown on route change
   useEffect(() => {
@@ -91,22 +82,6 @@ export default function WalletSelector({ fallbackWalletName, onClearWallet }: Wa
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-
-        {/* Home Link */}
-        <div className="mt-1 pt-1 space-y-1">
-          <button
-            onClick={handleHomeClick}
-            className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-all duration-200 hover:bg-gray-100/50 dark:hover:bg-white/5 ${
-              router.pathname === "/" ||
-              (router.pathname === "/wallets" || (router.pathname.startsWith("/wallets/") && !router.pathname.startsWith("/wallets/[wallet]")))
-                ? "!bg-gray-900 dark:!bg-white/10 !text-white dark:!text-white !font-medium"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <House className="h-5 w-5" />
-            <div className="flex items-center gap-2">Home</div>
-          </button>
         </div>
       </div>
     </div>

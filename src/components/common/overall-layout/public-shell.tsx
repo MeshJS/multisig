@@ -27,9 +27,7 @@ export default function PublicShell({ children }: { children: ReactNode }) {
       showSidebar={!isHomepage}
       showFooter
       mobileNav={
-        !isHomepage && (
-          <MobileNavigation showWalletMenu={false} isLoggedIn={false} />
-        )
+        <MobileNavigation showWalletMenu={false} isLoggedIn={false} />
       }
       headerRight={
         // On the homepage the hero carries the connector.

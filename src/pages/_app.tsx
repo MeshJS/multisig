@@ -24,6 +24,8 @@ import { Toaster } from "@/components/ui/toaster";
 import Metatags from "@/components/ui/metatags";
 import SeoFallback from "@/components/ui/seo-fallback";
 import PublicShell from "@/components/common/overall-layout/public-shell";
+import ResourceLinkCompatibility from "@/components/common/resource-link-compatibility";
+import MainScrollRestoration from "@/components/common/main-scroll-restoration";
 import Loading from "@/components/common/overall-layout/loading";
 import {
   hasRememberedWallet,
@@ -255,9 +257,11 @@ const MyApp: AppType<{ session: Session | null }> = ({
         />
       )}
       <SessionProvider session={session}>
+        <MainScrollRestoration />
         <div className={GeistSans.className}>
           <div className="flex min-h-[100dvh] w-full flex-col">
             <AppFrame pathname={router.pathname}>
+              <ResourceLinkCompatibility />
               <Component {...pageProps} />
             </AppFrame>
           </div>

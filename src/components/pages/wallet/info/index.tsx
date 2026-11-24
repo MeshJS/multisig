@@ -23,7 +23,8 @@ export default function WalletInfo() {
 
   return (
     <main className="flex w-full flex-1 flex-col gap-4 p-3 sm:p-4 md:gap-6 md:p-6 lg:gap-8 lg:p-8 max-w-7xl mx-auto">
-      <div className="grid grid-cols-1 gap-4 sm:gap-6">
+      {/* Flex stacking contains legacy grid spans on shared/conditional cards. */}
+      <div data-testid="overview-stack" className="flex min-w-0 flex-col gap-4 sm:gap-6 [&>*]:min-w-0 [&>*]:w-full">
         <CardInfo appWallet={appWallet} />
         <CardSigners appWallet={appWallet} />
         {multisigWallet && (

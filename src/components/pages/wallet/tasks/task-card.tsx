@@ -108,7 +108,7 @@ export function TaskCardBody({
             ) : (
               <button
                 type="button"
-                className="break-words text-left font-medium leading-snug hover:underline"
+                className="max-w-full break-words text-left font-medium leading-snug hover:underline"
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpen(task);
@@ -119,7 +119,7 @@ export function TaskCardBody({
               </button>
             )}
             {task.description && (
-              <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{task.description}</p>
+              <p className="mt-1 break-words line-clamp-2 text-sm text-muted-foreground">{task.description}</p>
             )}
           </div>
           {!overlay && (
@@ -186,13 +186,13 @@ export function TaskCardBody({
         )}
 
         {totals.length > 0 && (
-          <div className="mt-2 text-sm font-medium" data-testid={`task-totals-${task.id}`}>
+          <div className="mt-2 break-all text-sm font-medium" data-testid={`task-totals-${task.id}`}>
             {totals.join(" · ")}
           </div>
         )}
 
         {task.payout.state !== "none" && (
-          <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
             <PayoutBadge state={task.payout.state} payoutReady={ready} />
             {ready && !overlay && (
               <span className="text-xs text-muted-foreground">

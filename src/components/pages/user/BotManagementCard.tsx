@@ -1,4 +1,5 @@
 import { useState } from "react";
+import NextLink from "next/link";
 import { Bot, Trash2, Loader2, Pencil, Link, Copy, Check } from "lucide-react";
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/ui/row-label-info";
@@ -253,6 +254,9 @@ Do not skip steps. Do not ask for the secret over an insecure channel. Re-authen
       icon={Bot}
     >
       <div className="space-y-4">
+        <NextLink href="/bot-setup" className="inline-block text-sm underline underline-offset-4">
+          Bot setup and access guide
+        </NextLink>
         <div className="rounded-md border bg-muted/40 p-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -307,6 +311,9 @@ Do not skip steps. Do not ask for the secret over an insecure channel. Re-authen
                   <DialogDescription>
                     Enter the bot ID and claim code from your bot&apos;s output.
                   </DialogDescription>
+                  <NextLink href="/bot-setup" className="text-sm underline underline-offset-4">
+                    How to set up and claim a bot
+                  </NextLink>
                 </DialogHeader>
                 <div className="space-y-3">
                   <div className="space-y-2">
@@ -536,8 +543,8 @@ Do not skip steps. Do not ask for the secret over an insecure channel. Re-authen
                   key={key.id}
                   className="flex flex-col gap-1 rounded-md border p-3 text-sm"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{key.name}</span>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="min-w-0 break-all font-medium">{key.name}</span>
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
@@ -607,10 +614,10 @@ Do not skip steps. Do not ask for the secret over an insecure channel. Re-authen
                               return (
                                 <div
                                   key={access.walletId}
-                                  className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5"
+                                  className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5"
                                 >
-                                  <div className="flex min-w-0 items-center gap-2">
-                                    <span className="truncate text-xs font-medium">
+                                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                    <span className="break-all text-xs font-medium">
                                       {grantWallet?.name || getFirstAndLast(access.walletId, 8, 6)}
                                     </span>
                                     <Badge
@@ -656,7 +663,7 @@ Do not skip steps. Do not ask for the secret over an insecure channel. Re-authen
                           <p className="text-xs text-muted-foreground">No multisigs available for access grants.</p>
                         ) : (
                           <>
-                            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px_auto] sm:items-center">
+                            <div data-testid="bot-grant-controls" className="flex min-w-0 flex-wrap items-center gap-2">
                               {(() => {
                                 const selectedWalletId = selectedWalletByBot[botUser.id] ?? userWallets[0]?.id ?? "";
                                 const currentAccess = key.botWalletAccesses?.find(
@@ -678,12 +685,12 @@ Do not skip steps. Do not ask for the secret over an insecure channel. Re-authen
                                   setSelectedWalletByBot((prev) => ({ ...prev, [botUser.id]: value }))
                                 }
                               >
-                                <SelectTrigger>
+                                <SelectTrigger aria-label="Multisig wallet" title={selectedWallet?.name || selectedWalletId} className="min-w-0 flex-[2_1_18rem] [&>span]:min-w-0">
                                   <SelectValue placeholder="Select multisig wallet" />
                                 </SelectTrigger>
-                                <SelectContent>
+                                <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
                                   {userWallets.map((wallet) => (
-                                    <SelectItem key={wallet.id} value={wallet.id}>
+                                    <SelectItem key={wallet.id} value={wallet.id} className="break-all whitespace-normal">
                                       {wallet.name || getFirstAndLast(wallet.id, 8, 6)}
                                     </SelectItem>
                                   ))}
@@ -695,7 +702,7 @@ Do not skip steps. Do not ask for the secret over an insecure channel. Re-authen
                                   setSelectedRoleByBot((prev) => ({ ...prev, [botUser.id]: value }))
                                 }
                               >
-                                <SelectTrigger>
+                                <SelectTrigger aria-label="Wallet access role" className="min-w-0 flex-[1_1_10rem]">
                                   <SelectValue placeholder="Select role" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -713,6 +720,7 @@ Do not skip steps. Do not ask for the secret over an insecure channel. Re-authen
                               <Button
                                 size="sm"
                                 variant="outline"
+                                className="min-w-0 flex-[1_1_10rem]"
                                 onClick={() => {
                                   const walletId = selectedWalletId;
                                   if (!walletId || !userAddress) return;
@@ -739,7 +747,7 @@ Do not skip steps. Do not ask for the secret over an insecure channel. Re-authen
                                 )}
                               </Button>
                               {!canBeCosigner && (
-                                <p className="text-xs text-muted-foreground sm:col-span-3">
+                                <p className="basis-full text-xs text-muted-foreground">
                                   Cosigner requires the bot&apos;s address in this wallet&apos;s signer list — observer is the right role for advisory bots.
                                 </p>
                               )}

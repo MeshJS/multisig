@@ -6,6 +6,7 @@ import { Background } from "@/components/ui/background";
 import { useAppearanceStore } from "@/lib/zustand/appearance";
 import { useGraphicsTier } from "@/hooks/useGraphicsTier";
 import Logo from "@/components/common/overall-layout/logo";
+import LearnHelpDropdown from "./learn-help-dropdown";
 import SiteFooter from "@/components/common/overall-layout/site-footer";
 
 /**
@@ -82,20 +83,21 @@ export default function LayoutFrame({
         className="pointer-events-auto relative z-[100] border-b border-gray-300/50 bg-muted/40 pl-2 pr-4 dark:border-white/[0.03] lg:pl-4 lg:pr-6"
         data-header="main"
       >
-        <div className="flex h-14 items-center gap-4 lg:h-16">
+        <div className="flex h-14 items-center gap-2 md:gap-4 lg:h-16">
           {mobileNav}
 
           {/* Logo - in fixed-width container matching sidebar width */}
           <div
-            className={`flex items-center md:w-[260px] lg:w-[280px] ${compactLogo ? "flex-1 justify-center md:flex-none md:justify-start" : ""}`}
+            className={`flex min-w-0 items-center md:w-[260px] lg:w-[280px] ${compactLogo ? "flex-1 justify-center md:flex-none md:justify-start" : ""}`}
           >
             <Link
               href="/"
-              className="flex items-center gap-2 rounded-md px-4 py-2 text-sm transition-all duration-200 hover:bg-gray-100/50 dark:hover:bg-white/5 md:px-4"
+              aria-label="Multisig Platform home"
+              className="flex min-w-0 items-center gap-2 rounded-md px-1 py-2 text-sm transition-all duration-200 hover:bg-gray-100/50 dark:hover:bg-white/5 md:px-4"
             >
               <Logo />
               <span
-                className="select-none font-medium tracking-[-0.01em]"
+                className="hidden select-none whitespace-nowrap font-medium tracking-[-0.01em] sm:inline"
                 style={{ fontSize: "17px" }}
               >
                 Multisig Platform
@@ -104,7 +106,10 @@ export default function LayoutFrame({
           </div>
 
           {/* Right: Control buttons */}
-          <div className="ml-auto flex items-center gap-2">{headerRight}</div>
+          <div className="ml-auto flex shrink-0 items-center gap-1 md:gap-2">
+            <LearnHelpDropdown />
+            {headerRight}
+          </div>
         </div>
       </header>
 
@@ -113,7 +118,10 @@ export default function LayoutFrame({
         {showSidebar && (
           <aside className="hidden w-[260px] border-r border-gray-300/50 bg-muted/40 dark:border-white/[0.03] md:block lg:w-[280px]">
             <div className="flex h-full max-h-[100dvh] flex-col">
-              <nav className="flex-1 overflow-y-auto pt-2">
+              <nav
+                aria-label="Main navigation"
+                className="min-h-0 flex-1 overflow-y-auto overscroll-contain pt-2"
+              >
                 <div className="flex flex-col">{sidebar}</div>
               </nav>
               <div className="mt-auto p-4" />
@@ -131,7 +139,9 @@ export default function LayoutFrame({
               non-shrinking flex column so a `min-h-screen` page root can't be
               flex-shrunk by <main> (which would let content overflow under the
               footer). `contents` is a no-op passthrough for app pages. */}
-          <div className={showFooter ? "flex shrink-0 flex-col gap-4" : "contents"}>
+          <div
+            className={showFooter ? "flex shrink-0 flex-col gap-4" : "contents"}
+          >
             {children}
             {showFooter && <SiteFooter />}
           </div>
@@ -155,7 +165,12 @@ export function SidebarHomeLink() {
               : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
             <path
               strokeLinecap="round"
               strokeLinejoin="round"

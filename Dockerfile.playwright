@@ -7,7 +7,8 @@ COPY package.json package-lock.json* ./
 COPY prisma ./prisma
 RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
-# Copy e2e suite and the CI framework types it imports.
+# Copy e2e suite, CI framework, and application modules imported by specs.
 COPY e2e/ ./e2e/
 COPY scripts/ci/framework/ ./scripts/ci/framework/
+COPY src/ ./src/
 COPY tsconfig*.json ./

@@ -31,6 +31,7 @@
     "test:trpc": "jest -c jest.trpc.config.mjs --runInBand",
     "analyze": "ANALYZE=true npm run build",
     "apply-project": "node scripts/apply-project-to-github.mjs",
+    "test:resources": "node scripts/run-resource-acceptance.mjs",
     "test:e2e": "playwright test --config=e2e/playwright.config.ts"
   },
   "dependencies": {

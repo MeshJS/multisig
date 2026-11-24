@@ -561,12 +561,12 @@ export default function RootLayout({
     setLastWalletStakingEnabled(null);
   }, []);
 
-  // Clear wallet context when navigating to homepage
+  // Returning to either wallet-list entry clears the selected-wallet context.
   React.useEffect(() => {
-    if (isHomepage && lastVisitedWalletId) {
+    if ((isHomepage || router.pathname === "/wallets") && lastVisitedWalletId) {
       clearWalletContext();
     }
-  }, [isHomepage, lastVisitedWalletId, clearWalletContext]);
+  }, [isHomepage, router.pathname, lastVisitedWalletId, clearWalletContext]);
 
   // Memoize computed values
   const showWalletMenu = useMemo(() => isLoggedIn && (isWalletPath || !!lastVisitedWalletId), [isLoggedIn, isWalletPath, lastVisitedWalletId]);
@@ -622,15 +622,13 @@ export default function RootLayout({
         </>
       }
       mobileNav={
-        // Mobile menu button - hidden only on public homepage (not logged in)
-        (isLoggedIn || !isHomepage) && (
+        // Primary navigation stays available after runtime handover, including on home.
+        (
           <MobileNavigation
             showWalletMenu={showWalletMenu}
             isLoggedIn={isLoggedIn}
             walletId={walletIdForMenu}
-            fallbackWalletName={lastVisitedWalletName}
-            onClearWallet={clearWalletContext}
-            stakingEnabled={lastWalletStakingEnabled ?? undefined}
+            fallbackWalletName={lastVisitedWalletName}            stakingEnabled={lastWalletStakingEnabled ?? undefined}
             isWalletPath={isWalletPath}
           />
         )
@@ -673,9 +671,7 @@ export default function RootLayout({
           {/* 2. Wallet Selector - only when logged in */}
           {isLoggedIn && (
             <WalletSelector
-              fallbackWalletName={lastVisitedWalletName}
-              onClearWallet={clearWalletContext}
-            />
+              fallbackWalletName={lastVisitedWalletName}            />
           )}
 
           {/* 3. Wallet Menu - shown when wallet is selected */}
@@ -688,7 +684,7 @@ export default function RootLayout({
             </div>
           )}
 
-          {/* 4. Resources Menu - always visible */}
+          {/* 4. Global application navigation - always visible */}
           <div className="mt-4">
             <MenuWallets />
           </div>

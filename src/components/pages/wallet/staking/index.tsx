@@ -8,6 +8,7 @@ import PoolSelector from "./poolSelector";
 import useAppWallet from "@/hooks/useAppWallet";
 import { AUTO_ABSTAIN_DREP } from "@/lib/tx-draft/drep";
 import { NO_CONFIDENCE_DREP, isValidStakingDRep } from "@/utils/stakingCertificates";
+import { Input } from "@/components/ui/input";
 
 type DRepMode = "abstain" | "noConfidence" | "custom";
 
@@ -73,19 +74,19 @@ export default function PageStaking() {
       </div>
 
       <div className="mt-4 p-4">
-        <label className="mb-1 block text-sm font-medium text-gray-700">
+        <label htmlFor="staking-pool-id" className="mb-1 block text-sm font-medium text-foreground">
           Manually Enter Pool ID:
         </label>
-        <input
+        <Input
+          id="staking-pool-id"
           type="text"
           value={selectedPoolHex || ""}
           onChange={(e) => setSelectedPoolHex(e.target.value)}
           placeholder="Enter pool ID"
-          className="w-full rounded border px-3 py-2 text-sm"
         />
       </div>
       {selectedPoolHex && (
-        <div className="mt-4 rounded border bg-green-50 p-4 text-green-700">
+        <div className="mt-4 rounded border border-success/30 bg-success/10 p-4 text-green-700 dark:text-green-400">
           <p className="text-sm">
              <span className="font-semibold">Selected Pool ID:</span>{" "}
             <span className="break-all font-mono">{selectedPoolHex}</span>
@@ -94,29 +95,31 @@ export default function PageStaking() {
       )}
       {!stakingInfo.dRepId && (
       <div className="mt-4 p-4">
-        <label className="mb-1 block text-sm font-medium text-gray-700">
+        <label htmlFor="staking-drep-mode" className="mb-1 block text-sm font-medium text-foreground">
           Governance vote delegation (DRep) — required when staking:
         </label>
         <select
+          id="staking-drep-mode"
           value={dRepMode}
           onChange={(e) => setDRepMode(e.target.value as DRepMode)}
-          className="w-full rounded border px-3 py-2 text-sm"
+          className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-base text-foreground shadow-sm [color-scheme:light] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring dark:[color-scheme:dark] sm:text-sm"
         >
           <option value="abstain">Auto-Abstain</option>
           <option value="noConfidence">No-Confidence</option>
           <option value="custom">Choose a DRep (drep1...)</option>
         </select>
         {dRepMode === "custom" && (
-          <input
+          <Input
             type="text"
             value={customDRep}
             onChange={(e) => setCustomDRep(e.target.value)}
             placeholder="drep1..."
-            className="mt-2 w-full rounded border px-3 py-2 text-sm"
+            aria-label="Custom DRep ID"
+            className="mt-2"
           />
         )}
         {dRepMode === "custom" && !dRep && customDRep && (
-          <p className="mt-1 text-xs text-red-600">Not a valid DRep id.</p>
+          <p className="mt-1 text-xs text-red-600 dark:text-red-400">Not a valid DRep id.</p>
         )}
       </div>
       )}

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, Plug } from "lucide-react";
 
@@ -52,6 +53,7 @@ export default function McpActivityCard({ appWallet }: { appWallet: Wallet }) {
                 <button
                   type="button"
                   className="flex w-full items-start justify-between gap-3 p-3 text-left hover:bg-muted/50"
+                  aria-expanded={open}
                   onClick={() => setExpanded(open ? null : c.client)}
                 >
                   <div className="flex min-w-0 flex-col gap-1">
@@ -91,8 +93,8 @@ export default function McpActivityCard({ appWallet }: { appWallet: Wallet }) {
                             key={row.id}
                             className="flex flex-wrap items-baseline justify-between gap-2 py-1.5 text-xs"
                           >
-                            <span className="flex items-center gap-2">
-                              <code className="font-mono">{row.tool}</code>
+                            <span className="flex min-w-0 flex-wrap items-center gap-2">
+                              <code className="break-all font-mono">{row.tool}</code>
                               {!row.readOnly && (
                                 <Badge variant="secondary">write</Badge>
                               )}
@@ -116,9 +118,9 @@ export default function McpActivityCard({ appWallet }: { appWallet: Wallet }) {
 
           <p className="pt-1 text-xs text-muted-foreground">
             Manage or revoke these connections from{" "}
-            <a href="/user" className="underline underline-offset-2">
+            <Link href="/user" className="underline underline-offset-2">
               your profile
-            </a>
+            </Link>
             .
           </p>
         </div>

@@ -730,10 +730,9 @@ div > header[data-header="main"] {
   @apply pointer-events-none;
 }
 
-/* Apply to Add Wallet page specifically */
-body.add-wallet-glass-page {
-  background: transparent !important;
-}
+/* Wallet flows keep the global bg-background body colour. The globe is
+   optional, so transparency here exposes a white canvas in dark mode when
+   graphics effects are reduced, disabled, or still loading. */
 
 /* Cards on Add Wallet page */
 body.add-wallet-glass-page main [class*="border"] {

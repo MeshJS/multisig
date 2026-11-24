@@ -116,7 +116,7 @@ export default function PayoutDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
-      <DialogContent className="sm:max-w-[520px]" data-testid="payout-dialog">
+      <DialogContent className="grid-cols-1 [&>*]:min-w-0 sm:max-w-[520px]" data-testid="payout-dialog">
         <DialogHeader>
           <DialogTitle>
             {created ? "Payout created" : preview ? "Review payout" : "Prepare payout"}
@@ -130,7 +130,7 @@ export default function PayoutDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-4">
+        <div className="grid min-w-0 grid-cols-1 gap-4 py-4">
           {!preview && !created && (
             <>
               <div className="flex items-center justify-between">
@@ -157,12 +157,13 @@ export default function PayoutDialog({
                   return (
                     <label
                       key={task.id}
-                      className="flex cursor-pointer items-center justify-between gap-3 text-sm"
+                      className="flex flex-wrap cursor-pointer items-center justify-between gap-3 text-sm"
                     >
-                      <span className="flex min-w-0 items-center gap-2">
+                      <span className="flex min-w-0 max-w-full items-center gap-2">
                         <Checkbox
                           checked={on}
                           aria-label={on ? `Exclude ${task.title}` : `Include ${task.title}`}
+                          className="shrink-0"
                           data-testid={`payout-task-toggle-${task.id}`}
                           onCheckedChange={(value) => toggle(task.id, value === true)}
                         />
@@ -170,14 +171,14 @@ export default function PayoutDialog({
                           {task.title}
                         </span>
                       </span>
-                      <span className="shrink-0 font-medium">
+                      <span className="min-w-0 break-all font-medium">
                         {formatTotals(task.recipients, walletAssetMetadata).join(" · ")}
                       </span>
                     </label>
                   );
                 })}
               </div>
-              <p className="text-sm">
+              <p className="break-all text-sm">
                 <span className="font-medium">Total:</span>{" "}
                 {chosen.length > 0
                   ? formatTotals(chosen.flatMap((t) => t.recipients), walletAssetMetadata).join(" · ")
@@ -291,19 +292,19 @@ function SummaryView({
   expiresAt: string;
 }) {
   return (
-    <div className="grid gap-4" data-testid="payout-summary">
+    <div className="grid min-w-0 grid-cols-1 gap-4" data-testid="payout-summary">
       <div className="space-y-2">
         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Recipients ({summary.recipients.length})
         </div>
         <div className="space-y-2 rounded-lg border border-border/50 bg-muted/30 p-3">
           {summary.recipients.map((recipient) => (
-            <div key={recipient.address} className="flex items-center justify-between gap-3 text-sm">
+            <div key={recipient.address} className="flex flex-wrap items-center justify-between gap-3 text-sm">
               <span className="min-w-0">
-                {recipient.label && <span className="mr-2 font-medium">{recipient.label}</span>}
+                {recipient.label && <span className="mr-2 break-all font-medium">{recipient.label}</span>}
                 <span className="break-all font-mono text-xs text-muted-foreground">{recipient.address}</span>
               </span>
-              <span className="shrink-0 font-medium">{amountText(recipient.amounts)}</span>
+              <span className="min-w-0 break-all font-medium">{amountText(recipient.amounts)}</span>
             </div>
           ))}
         </div>
@@ -315,7 +316,7 @@ function SummaryView({
           allowOverflow
         />
         <RowLabelInfo label="Fee" value={<span data-testid="payout-fee">{summary.fee?.display ?? "—"}</span>} />
-        <RowLabelInfo label="Change" value={summary.change.length > 0 ? amountText(summary.change) : "—"} />
+        <RowLabelInfo allowOverflow label="Change" value={summary.change.length > 0 ? amountText(summary.change) : "—"} />
         <RowLabelInfo label="Inputs" value={String(summary.inputs.count)} />
         <RowLabelInfo label="Signatures" value={`${summary.threshold.required} of ${summary.threshold.total}`} />
         <RowLabelInfo label="Description" value={summary.description} allowOverflow />

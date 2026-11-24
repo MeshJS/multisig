@@ -171,7 +171,7 @@ export function ManageContacts({ appWallet }: { appWallet: Wallet }) {
         description="Add, edit, and manage contacts for this wallet. Contacts can be used when creating transactions."
       >
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-sm text-muted-foreground">
               {isLoading ? (
                 <span className="flex items-center gap-2">
@@ -205,9 +205,9 @@ export function ManageContacts({ appWallet }: { appWallet: Wallet }) {
                   className="flex items-start justify-between p-3 border rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors"
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm">{contact.name}</div>
+                    <div className="break-all font-medium text-sm">{contact.name}</div>
                     {contact.description && (
-                      <div className="text-xs text-muted-foreground mt-1">
+                      <div className="break-all text-xs text-muted-foreground mt-1">
                         {contact.description}
                       </div>
                     )}
@@ -219,6 +219,7 @@ export function ManageContacts({ appWallet }: { appWallet: Wallet }) {
                     <Button
                       variant="ghost"
                       size="sm"
+                      aria-label={`Edit ${contact.name}`}
                       onClick={() => openEditDialog(contact)}
                       className="h-8 w-8 p-0"
                     >
@@ -227,6 +228,7 @@ export function ManageContacts({ appWallet }: { appWallet: Wallet }) {
                     <Button
                       variant="ghost"
                       size="sm"
+                      aria-label={`Delete ${contact.name}`}
                       onClick={() => openDeleteDialog(contact)}
                       className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                     >

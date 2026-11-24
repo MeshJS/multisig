@@ -23,7 +23,7 @@ export default function StakingInfoCard({ stakingInfo }: { stakingInfo: StakingI
       <RowLabelInfo
         label="Status"
         value={stakingInfo.active ? "Active" : "Inactive"}
-        className={`text-sm ${stakingInfo.active ? "text-green-600" : "text-red-600"}`}
+        className={`text-sm ${stakingInfo.active ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
       />
       <RowLabelInfo
         label="Balance"
