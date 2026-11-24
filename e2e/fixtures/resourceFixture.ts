@@ -9,10 +9,12 @@ export const test = authTest.extend({
     try {
       await use(page);
     } finally {
-      // Wallet mocks fetch real tRPC batches before replacing selected results.
-      // Drain those handlers while the page/context are still alive so a final
-      // background refetch cannot fail an otherwise completed test at teardown.
-      await page.unrouteAll({ behavior: "wait" });
+      // Only after the test ends, discard late errors from background mocks as
+      // their page closes. "wait" races with overlapping handlers in Playwright
+      // 1.60 and can release a route before its fetch/fulfill completes:
+      // https://github.com/microsoft/playwright/issues/43878
+      // Errors during the test itself still fail normally.
+      await page.unrouteAll({ behavior: "ignoreErrors" });
     }
   },
   context: async ({ context }, use, info) => {
