@@ -72,3 +72,39 @@ export function proxyModeBlockedMessage(
   }
   return null;
 }
+
+/** A proxy's DRep id, tagged with the proxy it was derived for. */
+export type ProxyDRep = { proxyId: string; drepId: string };
+
+/**
+ * Whose voting record the governance page shows: the same credential a vote
+ * cast from that page would use.
+ *
+ * Why this exists: the proposal list used `proxyDrepId || walletDrepId`, so
+ * with Proxy Mode on it showed the wallet's own DRep votes — headed "Proxy DRep
+ * Voting Statistics", and as each proposal's current vote — whenever the proxy
+ * id wasn't in hand: while proxies loaded, while the proxy DRep id was still
+ * being derived, or when the selection belonged to another wallet. A user
+ * could read "already voted Yes" on a proposal the proxy never voted on.
+ *
+ * In proxy mode the record is the proxy's or nothing; `proxyDrep` only counts
+ * when it was derived for the proxy that is selected now, so a stale id from
+ * the previously selected proxy is never shown under the new one.
+ */
+export function governanceDRepView<P extends ProxyModeProxy>(
+  mode: ProxyMode<P>,
+  input: {
+    walletDrepId: string | null | undefined;
+    proxyDrep: ProxyDRep | null | undefined;
+  },
+): { dRepId: string | null; isProxy: boolean } {
+  if (mode.kind === "direct") {
+    return { dRepId: input.walletDrepId || null, isProxy: false };
+  }
+  if (mode.kind === "proxy") {
+    const { proxyDrep } = input;
+    const matches = !!proxyDrep && proxyDrep.proxyId === mode.proxy.id;
+    return { dRepId: matches ? proxyDrep.drepId || null : null, isProxy: true };
+  }
+  return { dRepId: null, isProxy: true };
+}
