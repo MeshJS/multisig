@@ -468,7 +468,10 @@ export function VaultGraphView({ graph }: Props) {
             ref={svgRef}
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
             className="h-[440px] w-full touch-none sm:h-[560px] lg:h-[620px]"
-            role="img"
+            // "group", not "img": an img's children are presentational, so
+            // every node button inside (each one focusable, with its own
+            // label) was hidden from screen readers (axe `nested-interactive`).
+            role="group"
             aria-label={`Knowledge graph of ${visibleNodes.length} notes and ${visibleEdges.length} links between them`}
             onPointerMove={onPointerMove}
             onPointerUp={endDrag}

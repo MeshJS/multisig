@@ -9,6 +9,9 @@ import {
 } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
 
+/** One spelling for the trigger and the list, so the two can't drift apart. */
+const pageSizeLabel = (size: number) => `${size} / page`;
+
 interface PaginationProps {
   currentPage: number;
   setCurrentPage: React.Dispatch<React.SetStateAction<number>>; // ✅ Explicitly defined
@@ -68,13 +71,22 @@ const Pagination: React.FC<PaginationProps> = ({
           setCurrentPage(1); // Reset to first page when page size changes
         }}
       >
-        <SelectTrigger className="h-9 w-[110px] text-sm">
-          <SelectValue />
+        {/* A bare <SelectValue /> left the trigger empty (seen on
+            /governance/drep after hydration, not only in the server HTML):
+            sighted users saw a blank box, and screen readers got a combobox
+            with no name (axe `button-name`). Rendering the value ourselves
+            shows it from the first paint; the label keeps the visible text in
+            it (WCAG 2.5.3, label in name). */}
+        <SelectTrigger
+          className="h-9 w-[110px] text-sm"
+          aria-label={`Rows per page: ${pageSizeLabel(pageSize)}`}
+        >
+          <SelectValue>{pageSizeLabel(pageSize)}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           {pageSizeOptions.map((size) => (
             <SelectItem key={size} value={String(size)}>
-              {size} / page
+              {pageSizeLabel(size)}
             </SelectItem>
           ))}
         </SelectContent>

@@ -50,10 +50,16 @@ export default function FileDrop({
           : "border-border bg-muted/30 hover:border-muted-foreground/40"
       } ${inert ? "opacity-60" : ""}`}
     >
+      {/* The visible "Choose a file" button below is the control; this input
+          only backs it. Left focusable, the visually hidden input was an
+          extra, unlabelled Tab stop in front of the button (axe `label`), so
+          it is taken out of the tab order and the accessibility tree. */}
       <input
         ref={inputRef}
         type="file"
         className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
         disabled={inert}
         onChange={(e) => {
           take(e.target.files?.[0]);

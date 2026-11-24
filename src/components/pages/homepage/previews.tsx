@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,9 +29,30 @@ import {
  * fonts, dark mode, badge/card styles) instead of going stale like a PNG.
  *
  * Everything here is decorative: the frames are `aria-hidden` and the mock
- * buttons are inert (`pointer-events-none`). The surrounding feature card's
+ * buttons are inert (`MockButton`). The surrounding feature card's
  * heading/description carry the real meaning for assistive tech and SEO.
  */
+
+/**
+ * A preview's fake action button. `pointer-events-none` alone stops clicks but
+ * not the keyboard: a real <button> inside an `aria-hidden` frame is still a
+ * Tab stop, so a keyboard user lands on a control a screen reader announces as
+ * nothing (axe `aria-hidden-focus`). `tabIndex={-1}` takes it out of the tab
+ * order; it keeps the real Button so the preview still looks like the app.
+ */
+function MockButton({
+  className,
+  ...props
+}: Omit<ComponentProps<typeof Button>, "tabIndex" | "onClick">) {
+  return (
+    <Button
+      {...props}
+      type="button"
+      tabIndex={-1}
+      className={cn("pointer-events-none", className)}
+    />
+  );
+}
 
 /** Faux "app window" frame that makes a preview read as a product screenshot. */
 function PreviewFrame({
@@ -229,12 +250,12 @@ export function CreateTransactionPreview() {
           Requires 2 of 3 signatures
         </div>
         <div className="flex gap-2">
-          <Button size="sm" className="pointer-events-none flex-1">
+          <MockButton size="sm" className="flex-1">
             <Send className="mr-1.5 h-3.5 w-3.5" />Create &amp; sign
-          </Button>
-          <Button size="sm" variant="outline" className="pointer-events-none">
+          </MockButton>
+          <MockButton size="sm" variant="outline">
             <Plus className="h-3.5 w-3.5" />
-          </Button>
+          </MockButton>
         </div>
       </div>
     </PreviewFrame>
@@ -402,9 +423,9 @@ export function DRepPreview() {
           <Stat label="Voting power" value="₳ 12.4M" />
           <Stat label="Delegators" value="1,284" />
         </div>
-        <Button size="sm" variant="outline" className="pointer-events-none mt-3 w-full">
+        <MockButton size="sm" variant="outline" className="mt-3 w-full">
           Delegate
-        </Button>
+        </MockButton>
       </TooltipProvider>
     </PreviewFrame>
   );
@@ -429,9 +450,9 @@ export function StakingPreview() {
         <Stat label="Delegated" value="₳ 128,450" />
         <Stat label="Rewards" value="₳ 842.17" />
       </div>
-      <Button size="sm" variant="outline" className="pointer-events-none mt-3 w-full">
+      <MockButton size="sm" variant="outline" className="mt-3 w-full">
         <TrendingUp className="mr-1.5 h-3.5 w-3.5" />Withdraw rewards
-      </Button>
+      </MockButton>
     </PreviewFrame>
   );
 }
