@@ -26,8 +26,11 @@ describe("Learn & Help destinations", () => {
     );
     for (const link of links)
       expect(publicRoutes).toContain(link.href.split("#")[0]);
+    // Light destinations are prefetched; wallet destinations are not, because
+    // prefetching one downloads the Cardano stack (see isLightHref).
+    // /api-docs became light in #449 — its token generator loads lazily.
     expect(isLightHref("/getting-started")).toBe(true);
-    expect(isLightHref("/api-docs")).toBe(false);
+    expect(isLightHref("/api-docs")).toBe(true);
     expect(isLightHref("/dapps")).toBe(false);
   });
   it("distinguishes fragment and nested destinations", () => {
