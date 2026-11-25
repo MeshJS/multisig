@@ -6,7 +6,6 @@
  * The env validation will happen when the module is actually used, not during config load.
  */
 import { createRequire } from "node:module";
-import { availableParallelism } from "node:os";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
@@ -27,11 +26,6 @@ if (!process.env.SKIP_ENV_VALIDATION) {
 /** @type {import("next").NextConfig} */
 const config = {
   reactStrictMode: true,
-  experimental: {
-    // Page-data workers each load the Cardano/WASM dependency graph. Avoid
-    // spawning dozens of these processes on high-core-count developer machines.
-    cpus: Math.max(1, Math.min(4, availableParallelism() - 1)),
-  },
   transpilePackages: ["geist", "@meshsdk/react", "@meshsdk/core-csl"],
   typescript: {
     // Warning: This allows production builds to successfully complete even if
