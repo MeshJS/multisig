@@ -1,10 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 
-import { env } from "@/env";
 import { db } from "@/server/db";
 import { enqueueBallotDeadlineReminders } from "@/lib/notifications/ballotDeadlines";
 import { notificationsEmailEnabled } from "@/lib/notifications/center";
 import { drainNotificationOutbox } from "@/lib/notifications/worker";
+import { authorizeSchedulerRequest } from "@/lib/notifications/schedulerAuth";
 
 /**
  * Scheduled entry point (see .github/workflows/ballot-deadline-reminders.yml):
@@ -15,21 +15,8 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse,
 ) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method Not Allowed" });
-  }
-
-  if (!env.NOTIFICATION_DRAIN_SECRET) {
-    return res.status(503).json({ error: "Notification drain is not configured" });
-  }
-
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : null;
-
-  if (token !== env.NOTIFICATION_DRAIN_SECRET) {
-    return res.status(401).json({ error: "Unauthorized" });
+  if (!authorizeSchedulerRequest(req, res, "notifications/ballot-deadlines")) {
+    return;
   }
 
   // Skip the chain lookups entirely when nothing could be sent anyway.
