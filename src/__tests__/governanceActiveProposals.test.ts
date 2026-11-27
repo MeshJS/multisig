@@ -524,6 +524,209 @@ describe("governanceActiveProposals API", () => {
     expect(statuses).toEqual(["active", "ratified"]);
   });
 
+  describe("request scheduling", () => {
+    // Each Blockfrost path answers through a promise the test settles by hand,
+    // so a test can observe which requests are already out while others hang.
+    type Deferred = {
+      promise: Promise<unknown>;
+      resolve: (value: unknown) => void;
+      reject: (error: unknown) => void;
+    };
+    const deferred = (): Deferred => {
+      let resolve!: (value: unknown) => void;
+      let reject!: (error: unknown) => void;
+      const promise = new Promise<unknown>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    };
+    const flush = () => new Promise((resolve) => setImmediate(resolve));
+    const requestedPaths = () => providerGetMock.mock.calls.map(([path]) => path);
+    const run = (query: Record<string, string> = {}) => {
+      const res = createMockResponse();
+      const done = handler(
+        {
+          method: "GET",
+          headers: { authorization: "Bearer token" },
+          query: { network: "1", ...query },
+        } as unknown as NextApiRequest,
+        res,
+      );
+      return { res, done };
+    };
+    const bodyOf = (res: ResponseMock) =>
+      (res.json as unknown as jest.Mock).mock.calls[0]?.[0] as any;
+    const openDetails = { ratified_epoch: null, enacted_epoch: null, dropped_epoch: null, expired_epoch: null };
+
+    it("requests the proposal list without waiting for the current epoch", async () => {
+      const epoch = deferred();
+      providerGetMock.mockImplementation(async (path) => {
+        if (path === "/epochs/latest") return epoch.promise;
+        if (path.startsWith("/governance/proposals?")) return [];
+        return null;
+      });
+
+      const { res, done } = run();
+      await flush();
+
+      expect(requestedPaths()).toContain("/governance/proposals?count=100&page=1&order=desc");
+      expect(res.json).not.toHaveBeenCalled();
+
+      epoch.resolve({ epoch: 700 });
+      await done;
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(bodyOf(res).currentEpoch).toBe(700);
+    });
+
+    it("still answers with currentEpoch null when the epoch lookup fails", async () => {
+      providerGetMock.mockImplementation(async (path) => {
+        if (path === "/epochs/latest") throw { status: 503, data: {} };
+        if (path.startsWith("/governance/proposals?")) return [];
+        return null;
+      });
+
+      const { res, done } = run();
+      await done;
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(bodyOf(res).currentEpoch).toBeNull();
+    });
+
+    it("fetches one proposal's metadata while another proposal's details are still pending", async () => {
+      const slowDetails = deferred();
+      providerGetMock.mockImplementation(async (path) => {
+        if (path === "/epochs/latest") return { epoch: 700 };
+        if (path.startsWith("/governance/proposals?")) {
+          return [
+            { tx_hash: "tx-fast", cert_index: 0, governance_type: "info_action" },
+            { tx_hash: "tx-slow", cert_index: 1, governance_type: "info_action" },
+          ];
+        }
+        if (path === "/governance/proposals/tx-fast/0") return openDetails;
+        if (path === "/governance/proposals/tx-slow/1") return slowDetails.promise;
+        return null;
+      });
+
+      const { res, done } = run();
+      await flush();
+
+      expect(requestedPaths()).toContain("/governance/proposals/tx-fast/0/metadata");
+
+      // The slow one turns out to be no longer active (this suite's status
+      // stub reports any terminal epoch as "ratified", which the default
+      // request leaves out), so its metadata is never requested.
+      slowDetails.resolve({ ...openDetails, ratified_epoch: 650 });
+      await done;
+
+      expect(requestedPaths()).not.toContain("/governance/proposals/tx-slow/1/metadata");
+      const body = bodyOf(res);
+      expect(body.proposals.map((p: any) => p.proposalId)).toEqual(["tx-fast#0"]);
+      expect(body.sourceCount).toBe(2);
+      expect(body.activeCount).toBe(1);
+    });
+
+    const activeAndRatified = () =>
+      providerGetMock.mockImplementation(async (path) => {
+        if (path === "/epochs/latest") return { epoch: 700 };
+        if (path.startsWith("/governance/proposals?")) {
+          return [
+            { tx_hash: "tx-active", cert_index: 0, governance_type: "info_action" },
+            { tx_hash: "tx-ratified", cert_index: 1, governance_type: "info_action" },
+          ];
+        }
+        if (path === "/governance/proposals/tx-active/0") return openDetails;
+        if (path === "/governance/proposals/tx-ratified/1") return { ...openDetails, ratified_epoch: 699 };
+        return null;
+      });
+    const metadataPaths = () => requestedPaths().filter((path) => path.endsWith("/metadata"));
+
+    it("makes one request per epoch, list, proposal details and returned proposal's metadata — no more", async () => {
+      activeAndRatified();
+
+      const { done } = run();
+      await done;
+
+      expect(metadataPaths()).toEqual(["/governance/proposals/tx-active/0/metadata"]);
+      // epoch + list + 2 details + 1 metadata
+      expect(providerGetMock).toHaveBeenCalledTimes(5);
+    });
+
+    it("requests metadata for ratified proposals when includeRatified=true asks for them", async () => {
+      activeAndRatified();
+
+      const { done } = run({ includeRatified: "true" });
+      await done;
+
+      expect(metadataPaths().sort()).toEqual([
+        "/governance/proposals/tx-active/0/metadata",
+        "/governance/proposals/tx-ratified/1/metadata",
+      ]);
+    });
+
+    it("answers 503 when the list is rate-limited, even while the epoch lookup is still out", async () => {
+      const epoch = deferred();
+      providerGetMock.mockImplementation(async (path) => {
+        if (path === "/epochs/latest") return epoch.promise;
+        if (path.startsWith("/governance/proposals?")) throw { status: 429, data: {} };
+        return null;
+      });
+
+      const { res, done } = run();
+      await done;
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(bodyOf(res)).toEqual({
+        error: "Governance provider rate-limited. Retry later.",
+        retryable: true,
+      });
+      // The epoch lookup failing after the response is sent must be absorbed,
+      // not surface as an unhandled rejection.
+      epoch.reject({ status: 500, data: {} });
+      await flush();
+    });
+
+    it("answers 500 when the list fails for another reason", async () => {
+      providerGetMock.mockImplementation(async (path) => {
+        if (path === "/epochs/latest") throw { status: 500, data: {} };
+        if (path.startsWith("/governance/proposals?")) throw { status: 500, data: {} };
+        return null;
+      });
+
+      const { res, done } = run();
+      await done;
+
+      expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    it("keeps the list's order when a later proposal resolves first", async () => {
+      const firstDetails = deferred();
+      providerGetMock.mockImplementation(async (path) => {
+        if (path === "/epochs/latest") return { epoch: 700 };
+        if (path.startsWith("/governance/proposals?")) {
+          return [
+            { tx_hash: "tx-first", cert_index: 0, governance_type: "info_action" },
+            { tx_hash: "tx-second", cert_index: 1, governance_type: "info_action" },
+          ];
+        }
+        if (path === "/governance/proposals/tx-first/0") return firstDetails.promise;
+        if (path === "/governance/proposals/tx-second/1") return openDetails;
+        return null;
+      });
+
+      const { res, done } = run();
+      await flush();
+      firstDetails.resolve(openDetails);
+      await done;
+
+      expect(bodyOf(res).proposals.map((p: any) => p.proposalId)).toEqual([
+        "tx-first#0",
+        "tx-second#1",
+      ]);
+    });
+  });
+
   describe("human (non-bot) callers", () => {
     const asHuman = () => {
       verifyJwtMock.mockReturnValue({ address: "addr_test1qphuman" });
