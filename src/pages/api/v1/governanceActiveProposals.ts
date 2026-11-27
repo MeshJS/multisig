@@ -150,17 +150,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Current epoch lets bots compute time-to-deadline from details.expiration
     // without a second data source. Best-effort — null if the lookup fails.
-    let currentEpoch: number | null = null;
-    try {
-      const latestEpoch = await providerGet<{ epoch?: number }>({
-        provider,
-        network,
-        path: "/epochs/latest",
-      });
-      currentEpoch = typeof latestEpoch?.epoch === "number" ? latestEpoch.epoch : null;
-    } catch {
-      // leave null
-    }
+    // It does not depend on the proposal list, so it is started now and only
+    // awaited for the response: awaiting it first put a whole Blockfrost round
+    // trip in front of every other request this handler makes.
+    const currentEpochPromise: Promise<number | null> = providerGet<{ epoch?: number }>({
+      provider,
+      network,
+      path: "/epochs/latest",
+    }).then(
+      (latestEpoch) => (typeof latestEpoch?.epoch === "number" ? latestEpoch.epoch : null),
+      () => null,
+    );
 
     let list: BlockfrostProposalListItem[];
     try {
@@ -177,165 +177,184 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       list = [];
     }
 
-    const statusResolved = await Promise.all(
-      (Array.isArray(list) ? list : []).map(async (item) => {
-        const txHash = item.tx_hash;
-        const certIndex = Number(item.cert_index);
-        let detailsForStatus: BlockfrostProposalDetailsItem | null = null;
+    const resolveStatus = async (item: BlockfrostProposalListItem) => {
+      const txHash = item.tx_hash;
+      const certIndex = Number(item.cert_index);
+      let detailsForStatus: BlockfrostProposalDetailsItem | null = null;
 
-        try {
-          detailsForStatus = await providerGet<BlockfrostProposalDetailsItem>({
-            provider,
-            network,
-            path: `/governance/proposals/${txHash}/${certIndex}`,
-          });
-        } catch (error) {
-          const status = getErrorStatus(error);
-          if (status && status !== 404) {
-            console.warn("governanceActiveProposals details fetch failed; using list status fields", {
-              txHash,
-              certIndex,
-              status,
-            });
-          }
-        }
-
-        const status = getProposalStatus({
-          id: "",
-          tx_hash: txHash,
-          cert_index: certIndex,
-          governance_type: item.governance_type,
-          deposit:
-            typeof detailsForStatus?.deposit === "string"
-              ? detailsForStatus.deposit
-              : "",
-          return_address:
-            typeof detailsForStatus?.return_address === "string"
-              ? detailsForStatus.return_address
-              : "",
-          governance_description: { tag: "" },
-          ratified_epoch:
-            detailsForStatus?.ratified_epoch ?? item.ratified_epoch ?? null,
-          enacted_epoch:
-            detailsForStatus?.enacted_epoch ?? item.enacted_epoch ?? null,
-          dropped_epoch:
-            detailsForStatus?.dropped_epoch ?? item.dropped_epoch ?? null,
-          expired_epoch:
-            detailsForStatus?.expired_epoch ?? item.expired_epoch ?? null,
-          expiration:
-            typeof detailsForStatus?.expiration === "number"
-              ? detailsForStatus.expiration
-              : null,
+      try {
+        detailsForStatus = await providerGet<BlockfrostProposalDetailsItem>({
+          provider,
+          network,
+          path: `/governance/proposals/${txHash}/${certIndex}`,
         });
+      } catch (error) {
+        const status = getErrorStatus(error);
+        if (status && status !== 404) {
+          console.warn("governanceActiveProposals details fetch failed; using list status fields", {
+            txHash,
+            certIndex,
+            status,
+          });
+        }
+      }
 
-        return { item, detailsForStatus, status };
-      }),
-    );
+      const status = getProposalStatus({
+        id: "",
+        tx_hash: txHash,
+        cert_index: certIndex,
+        governance_type: item.governance_type,
+        deposit:
+          typeof detailsForStatus?.deposit === "string"
+            ? detailsForStatus.deposit
+            : "",
+        return_address:
+          typeof detailsForStatus?.return_address === "string"
+            ? detailsForStatus.return_address
+            : "",
+        governance_description: { tag: "" },
+        ratified_epoch:
+          detailsForStatus?.ratified_epoch ?? item.ratified_epoch ?? null,
+        enacted_epoch:
+          detailsForStatus?.enacted_epoch ?? item.enacted_epoch ?? null,
+        dropped_epoch:
+          detailsForStatus?.dropped_epoch ?? item.dropped_epoch ?? null,
+        expired_epoch:
+          detailsForStatus?.expired_epoch ?? item.expired_epoch ?? null,
+        expiration:
+          typeof detailsForStatus?.expiration === "number"
+            ? detailsForStatus.expiration
+            : null,
+      });
+
+      return { item, detailsForStatus, status };
+    };
 
     // "active" = no terminal epoch stamped on-chain. Explorers often still
     // display ratified-but-not-enacted actions as open (their outcome is
     // decided but enactment waits for the epoch boundary) — bots that want
     // those boundary cases can opt in via includeRatified=true.
-    const included = statusResolved.filter(
-      (entry) =>
-        entry.status === "active" ||
-        (includeRatified && entry.status === "ratified"),
-    );
+    const isIncluded = (status: ReturnType<typeof getProposalStatus>) =>
+      status === "active" || (includeRatified && status === "ratified");
 
-    const proposals = await Promise.all(
-      included.map(async ({ item, detailsForStatus, status }) => {
-        const txHash = item.tx_hash;
-        const certIndex = Number(item.cert_index);
-        let metadata: ProposalMetadata | null = null;
-        const metadataProvider: ProposalMetadataProvider = {
-          get: (path) => providerGet({ provider, network, path }),
-        };
+    const buildProposal = async ({
+      item,
+      detailsForStatus,
+      status,
+    }: Awaited<ReturnType<typeof resolveStatus>>) => {
+      const txHash = item.tx_hash;
+      const certIndex = Number(item.cert_index);
+      let metadata: ProposalMetadata | null = null;
+      const metadataProvider: ProposalMetadataProvider = {
+        get: (path) => providerGet({ provider, network, path }),
+      };
 
-        try {
-          metadata = await fetchProposalMetadataWithFallback({
-            provider: metadataProvider,
-            proposal: item,
-            details: detailsForStatus
-              ? {
-                  id: detailsForStatus.id ?? "",
-                  tx_hash: txHash,
-                  cert_index: certIndex,
-                  governance_type: item.governance_type,
-                  deposit:
-                    typeof detailsForStatus.deposit === "string"
-                      ? detailsForStatus.deposit
-                      : "",
-                  return_address:
-                    typeof detailsForStatus.return_address === "string"
-                      ? detailsForStatus.return_address
-                      : "",
-                  governance_description: { tag: "" },
-                  ratified_epoch: detailsForStatus.ratified_epoch ?? null,
-                  enacted_epoch: detailsForStatus.enacted_epoch ?? null,
-                  dropped_epoch: detailsForStatus.dropped_epoch ?? null,
-                  expired_epoch: detailsForStatus.expired_epoch ?? null,
-                  expiration: detailsForStatus.expiration ?? null,
-                }
-              : null,
-          });
-        } catch (error) {
-          const status = getErrorStatus(error);
-          if (status !== 404) {
-            console.warn("governanceActiveProposals metadata fetch failed", {
-              txHash,
-              certIndex,
-              status,
-            });
-          }
-        }
-
-        const body = metadata?.json_metadata.body;
-        const authors =
-          metadata?.json_metadata.authors.map((author) => author.name) ?? [];
-
-        return {
-          proposalId: `${txHash}#${certIndex}`,
-          txHash,
-          certIndex,
-          governanceType: item.governance_type,
-          title: body?.title ?? null,
-          abstract: body?.abstract ?? null,
-          motivation: body?.motivation ?? null,
-          rationale: body?.rationale ?? null,
-          authors,
-          status,
-          details: includeDetails
+      try {
+        metadata = await fetchProposalMetadataWithFallback({
+          provider: metadataProvider,
+          proposal: item,
+          details: detailsForStatus
             ? {
-                proposedEpoch:
-                  typeof detailsForStatus?.proposed_epoch === "number"
-                    ? detailsForStatus.proposed_epoch
-                    : null,
-                activationEpoch:
-                  typeof detailsForStatus?.activation_epoch === "number"
-                    ? detailsForStatus.activation_epoch
-                    : null,
-                expiration:
-                  typeof detailsForStatus?.expiration === "number"
-                    ? detailsForStatus.expiration
-                    : null,
+                id: detailsForStatus.id ?? "",
+                tx_hash: txHash,
+                cert_index: certIndex,
+                governance_type: item.governance_type,
                 deposit:
-                  typeof detailsForStatus?.deposit === "string"
+                  typeof detailsForStatus.deposit === "string"
                     ? detailsForStatus.deposit
-                    : null,
-                returnAddress:
-                  typeof detailsForStatus?.return_address === "string"
+                    : "",
+                return_address:
+                  typeof detailsForStatus.return_address === "string"
                     ? detailsForStatus.return_address
-                    : null,
-                parameters:
-                  detailsForStatus &&
-                  typeof detailsForStatus === "object" &&
-                  "parameters" in detailsForStatus
-                    ? detailsForStatus.parameters ?? null
-                    : null,
+                    : "",
+                governance_description: { tag: "" },
+                ratified_epoch: detailsForStatus.ratified_epoch ?? null,
+                enacted_epoch: detailsForStatus.enacted_epoch ?? null,
+                dropped_epoch: detailsForStatus.dropped_epoch ?? null,
+                expired_epoch: detailsForStatus.expired_epoch ?? null,
+                expiration: detailsForStatus.expiration ?? null,
               }
-            : undefined,
-        };
-      }),
+            : null,
+        });
+      } catch (error) {
+        const status = getErrorStatus(error);
+        if (status !== 404) {
+          console.warn("governanceActiveProposals metadata fetch failed", {
+            txHash,
+            certIndex,
+            status,
+          });
+        }
+      }
+
+      const body = metadata?.json_metadata.body;
+      const authors =
+        metadata?.json_metadata.authors.map((author) => author.name) ?? [];
+
+      return {
+        proposalId: `${txHash}#${certIndex}`,
+        txHash,
+        certIndex,
+        governanceType: item.governance_type,
+        title: body?.title ?? null,
+        abstract: body?.abstract ?? null,
+        motivation: body?.motivation ?? null,
+        rationale: body?.rationale ?? null,
+        authors,
+        status,
+        details: includeDetails
+          ? {
+              proposedEpoch:
+                typeof detailsForStatus?.proposed_epoch === "number"
+                  ? detailsForStatus.proposed_epoch
+                  : null,
+              activationEpoch:
+                typeof detailsForStatus?.activation_epoch === "number"
+                  ? detailsForStatus.activation_epoch
+                  : null,
+              expiration:
+                typeof detailsForStatus?.expiration === "number"
+                  ? detailsForStatus.expiration
+                  : null,
+              deposit:
+                typeof detailsForStatus?.deposit === "string"
+                  ? detailsForStatus.deposit
+                  : null,
+              returnAddress:
+                typeof detailsForStatus?.return_address === "string"
+                  ? detailsForStatus.return_address
+                  : null,
+              parameters:
+                detailsForStatus &&
+                typeof detailsForStatus === "object" &&
+                "parameters" in detailsForStatus
+                  ? detailsForStatus.parameters ?? null
+                  : null,
+            }
+          : undefined,
+      };
+    };
+
+    // Each proposal goes details → status → (if included) metadata on its own,
+    // so a proposal whose details came back early fetches its metadata while
+    // slower details are still in flight. A barrier between the two stages
+    // made every response wait for the slowest details call plus the slowest
+    // metadata call, when only the slowest per-proposal chain matters.
+    // Metadata is still fetched only for included proposals: a page is up to
+    // 100 list items, mostly expired ones, and speculative metadata calls for
+    // them would spend the Blockfrost budget for nothing. Promise.all keeps
+    // the list's order.
+    const [currentEpoch, built] = await Promise.all([
+      currentEpochPromise,
+      Promise.all(
+        (Array.isArray(list) ? list : []).map(async (item) => {
+          const entry = await resolveStatus(item);
+          return isIncluded(entry.status) ? buildProposal(entry) : null;
+        }),
+      ),
+    ]);
+    const proposals = built.filter(
+      (proposal): proposal is NonNullable<typeof proposal> => proposal !== null,
     );
 
     return res.status(200).json({
