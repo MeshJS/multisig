@@ -17,6 +17,7 @@ The batch processing system addresses timeout issues when processing large numbe
 The endpoint requires authentication using the `SNAPSHOT_AUTH_TOKEN` environment variable:
 - **Header**: `Authorization: Bearer <token>`
 - **Environment Variable**: `SNAPSHOT_AUTH_TOKEN`
+- The token is compared in constant time and must be sent with the `Bearer ` scheme. Failed attempts are throttled to 15 per minute per client IP (`429` after that); successful calls are never counted, so a full run from one runner IP is not throttled. The limit is in memory and keyed on the forwarded client IP, so it slows naive guessing rather than capping it — a long random token is what actually protects the endpoint.
 
 ## Route
 

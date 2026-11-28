@@ -1,8 +1,12 @@
-import { createHash, timingSafeEqual } from "crypto";
 import type { NextApiRequest, NextApiResponse } from "next";
 
 import { env } from "@/env";
+import { bearerMatchesSecret } from "@/lib/security/bearerSecret";
 import { applyStrictRateLimit } from "@/lib/security/requestGuards";
+
+// Re-exported so existing imports keep working; the check itself lives in
+// lib/security because the balance-snapshot endpoint uses it too.
+export { bearerMatchesSecret };
 
 /**
  * Shared gate for the scheduler-only notification endpoints
@@ -13,28 +17,6 @@ import { applyStrictRateLimit } from "@/lib/security/requestGuards";
  * no rate limit: a plain string comparison returns as soon as a character
  * differs, which leaks how much of a guess was right.
  */
-
-function digest(value: string): Buffer {
-  return createHash("sha256").update(value, "utf8").digest();
-}
-
-/**
- * Constant-time check of an Authorization header against the secret. Both sides
- * are hashed first so the buffers always have equal length: timingSafeEqual
- * throws on a length mismatch, and an early length check would leak the
- * secret's length.
- */
-export function bearerMatchesSecret(
-  authorization: string | string[] | undefined,
-  secret: string,
-): boolean {
-  if (typeof authorization !== "string" || !authorization.startsWith("Bearer ")) {
-    return false;
-  }
-  const token = authorization.slice("Bearer ".length);
-  if (!token || !secret) return false;
-  return timingSafeEqual(digest(token), digest(secret));
-}
 
 /**
  * Answers the request and returns false unless it is a POST carrying the drain
