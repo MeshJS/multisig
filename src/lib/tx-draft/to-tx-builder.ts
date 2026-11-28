@@ -77,7 +77,7 @@ export function applyDraftToTxBuilder(
         ? {
             datum: {
               type: "Inline" as const,
-              data: { type: "CBOR" as const, content: datums[index]! },
+              data: { type: "CBOR" as const, content: datums[index] },
             },
           }
         : {}),
@@ -201,7 +201,7 @@ export function applyDraftToTxBuilder(
   for (const [index, output] of draft.outputs.entries()) {
     txBuilder.txOut(output.address, preparedOutputs[index]!.amount);
     if (datums[index] !== undefined) {
-      txBuilder.txOutInlineDatumValue(datums[index]!, "CBOR");
+      txBuilder.txOutInlineDatumValue(datums[index], "CBOR");
     }
   }
 

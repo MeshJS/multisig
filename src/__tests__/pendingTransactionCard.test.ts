@@ -107,7 +107,7 @@ jest.mock("@/utils/txSignUtils", () => ({
   filterWitnessesToScripts: (hex: string) => hex,
   shouldSubmitMultisigTx: () => true,
   submitTxWithScriptRecovery: (...args: unknown[]) =>
-    (mockSubmit as Function)(...args),
+    (mockSubmit as (...args: unknown[]) => ReturnType<typeof mockSubmit>)(...args),
 }));
 jest.mock("@/utils/transactionReadiness", () => ({
   hasVerifiedPaymentWitness: () => mockWitness(),
@@ -244,7 +244,7 @@ test.each(["proxy", "review", "wallet", "readiness"])(
         mockCurrent = false;
         return { ready: true };
       });
-    const error = jest.spyOn(console, "error").mockImplementation(() => {});
+    const error = jest.spyOn(console, "error").mockImplementation(() => { /* Intentionally inert test double. */ });
     try {
       await mockSignClick!();
     } finally {
@@ -269,7 +269,7 @@ test("unreadable CBOR has a retry state and cannot sign despite plausible JSON",
 test("acknowledgment cannot replace an authorized payment-key signature", async () => {
   render();
   mockWitness.mockReturnValueOnce(false);
-  const error = jest.spyOn(console, "error").mockImplementation(() => {});
+  const error = jest.spyOn(console, "error").mockImplementation(() => { /* Intentionally inert test double. */ });
   try {
     await mockSignClick!();
   } finally {

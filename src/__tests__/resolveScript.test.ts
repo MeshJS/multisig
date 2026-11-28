@@ -137,6 +137,7 @@ describe("resolveScript API", () => {
       scriptJson,
       sigHashes: [sigA, sigB],
     });
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(res.setHeader).toHaveBeenCalledWith(
       "Cache-Control",
       "public, max-age=300, stale-while-revalidate=600",
@@ -179,6 +180,7 @@ describe("resolveScript API", () => {
       scriptJson: null,
       sigHashes: [],
     });
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(res.setHeader).toHaveBeenCalledWith(
       "Cache-Control",
       "public, max-age=60, stale-while-revalidate=120",

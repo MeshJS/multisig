@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Loader } from "lucide-react";
-import { StakingInfo } from "../stakingInfoCard";
-import { Wallet } from "@/types/wallet";
-import { UTxO } from "@meshsdk/core";
-import { MultisigWallet } from "@/utils/multisigSDK";
+import { type StakingInfo } from "../stakingInfoCard";
+import { type Wallet } from "@/types/wallet";
+import { type UTxO } from "@meshsdk/core";
+import { type MultisigWallet } from "@/utils/multisigSDK";
 import { ToastAction } from "@radix-ui/react-toast";
 import { toast } from "@/hooks/use-toast";
 import { getTxBuilder } from "@/utils/get-tx-builder";

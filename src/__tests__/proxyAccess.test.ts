@@ -84,7 +84,7 @@ describe("proxyAccess", () => {
     await expect(
       authorizeProxyReadForV1({
         db: db as never,
-        payload: { address: BOT_TEST_ADDRESS } as never,
+        payload: { address: BOT_TEST_ADDRESS },
         walletId: "wallet-1",
         address: BOT_TEST_ADDRESS,
       }),

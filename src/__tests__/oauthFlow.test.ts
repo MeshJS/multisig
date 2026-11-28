@@ -32,7 +32,8 @@ jest.mock("@/lib/oauth/clients", () => ({
   __esModule: true,
   resolveClient: resolveClientMock,
   hashSecret: (secret: string) =>
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Resolve crypto inside the hoisted mock factory, independently of import initialization.
     (require("crypto") as typeof import("crypto"))
       .createHash("sha256")
       .update(secret)
@@ -202,7 +203,7 @@ describe("GET /api/oauth/authorize", () => {
     );
 
     expect(res._status).toBe(302);
-    const url = new URL(res._redirect as string);
+    const url = new URL(res._redirect!);
     expect(url.origin + url.pathname).toBe("https://app.example/cb");
     expect(url.searchParams.get("error")).toBe("invalid_request");
     // RFC 9207 — the client must be able to tell which AS answered.
@@ -217,7 +218,7 @@ describe("GET /api/oauth/authorize", () => {
       res,
     );
 
-    const url = new URL(res._redirect as string);
+    const url = new URL(res._redirect!);
     expect(url.searchParams.get("error")).toBe("invalid_target");
   });
 
@@ -227,9 +228,9 @@ describe("GET /api/oauth/authorize", () => {
     delete (req.query as Record<string, unknown>).scope;
     await authorize(req, res);
 
-    const handle = new URL(res._redirect as string, ISSUER).searchParams.get("request");
+    const handle = new URL(res._redirect!, ISSUER).searchParams.get("request");
     const { decodeAuthorizationRequest } = await import("@/lib/oauth/requests");
-    expect(decodeAuthorizationRequest(handle as string)?.scopes).toEqual([
+    expect(decodeAuthorizationRequest(handle!)?.scopes).toEqual([
       "wallets:read",
     ]);
   });
@@ -241,9 +242,9 @@ describe("GET /api/oauth/authorize", () => {
       res,
     );
 
-    const handle = new URL(res._redirect as string, ISSUER).searchParams.get("request");
+    const handle = new URL(res._redirect!, ISSUER).searchParams.get("request");
     const { decodeAuthorizationRequest } = await import("@/lib/oauth/requests");
-    expect(decodeAuthorizationRequest(handle as string)?.scopes).toEqual([
+    expect(decodeAuthorizationRequest(handle!)?.scopes).toEqual([
       "wallets:read",
     ]);
   });

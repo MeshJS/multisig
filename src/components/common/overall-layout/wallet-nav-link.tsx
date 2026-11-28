@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 import { Badge } from "@/components/ui/badge";
 import MenuLink from "./menus/menu-link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
-import { Wallet } from "@prisma/client";
+import { type Wallet } from "@prisma/client";
 
 type WalletNavLinkProps = {
   wallet: Wallet;

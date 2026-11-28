@@ -2,7 +2,7 @@ import Button from "@/components/common/button";
 import CardUI from "@/components/ui/card-content";
 import { useToast } from "@/hooks/use-toast";
 import { useUserStore } from "@/lib/zustand/user";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { api } from "@/utils/api";
 import { useRouter } from "next/router";
 

@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Plus, Edit2, Trash2, UserPlus, Loader2 } from "lucide-react";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { toast } from "@/hooks/use-toast";
 import { api } from "@/utils/api";
 

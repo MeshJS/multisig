@@ -84,9 +84,11 @@ describe("withTaskPayoutHooks", () => {
 
     const tx = makeTx();
     await deps.afterCreate!(tx, { id: "tx-new" }, c);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(tx.task.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: { in: ["t1", "t2"] }, walletId: "wallet-1" } }),
     );
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(tx.taskPayout.createMany).toHaveBeenCalledWith({
       data: [
         { walletId: "wallet-1", taskId: "t1", transactionId: "tx-new", status: "Pending", createdBy: SUBJECT },
@@ -101,7 +103,9 @@ describe("withTaskPayoutHooks", () => {
     expect(deps.txJsonExtras!(c)).toEqual({});
     const tx = makeTx();
     await deps.afterCreate!(tx, { id: "tx-new" }, c);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(tx.task.findMany).not.toHaveBeenCalled();
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(tx.taskPayout.createMany).not.toHaveBeenCalled();
   });
 
@@ -115,6 +119,7 @@ describe("withTaskPayoutHooks", () => {
       status: 409,
       code: "TASK_CHANGED",
     });
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(tx.taskPayout.createMany).not.toHaveBeenCalled();
   });
 
@@ -125,6 +130,7 @@ describe("withTaskPayoutHooks", () => {
     const error = await deps.afterCreate!(tx, { id: "tx-new" }, claims()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(TxReviewError);
     expect(error).toMatchObject({ status: 409, code: "TASK_NOT_PAYABLE" });
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(tx.taskPayout.createMany).not.toHaveBeenCalled();
   });
 
@@ -136,6 +142,7 @@ describe("withTaskPayoutHooks", () => {
       status: 409,
       code: "TASK_NOT_DONE",
     });
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(tx.taskPayout.createMany).not.toHaveBeenCalled();
   });
 

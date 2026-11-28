@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import SectionTitle from "@/components/ui/section-title";
 import { getBlockfrostReader as getProvider } from "@/utils/blockfrost-get";
-import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
+import { type BlockfrostDrepInfo, type BlockfrostDrepMetadata } from "@/types/governance";
 import { fetchDrepProfile } from "@/lib/governance/drep-profile";
 import Metadata from "./metadata";
 import { TooltipProvider } from "@/components/ui/tooltip";

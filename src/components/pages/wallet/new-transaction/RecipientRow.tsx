@@ -121,7 +121,7 @@ function RecipientRow({
               className="flex-1"
             />
             {getAddressLabel && recipientAddresses[index] && (() => {
-              const addressLabel = getAddressLabel(recipientAddresses[index]!);
+              const addressLabel = getAddressLabel(recipientAddresses[index]);
               if (addressLabel.label) {
                 return (
                   <Badge

@@ -71,7 +71,7 @@ describe("Pagination page-size select (/governance/drep and wallet lists)", () =
       onLastPage: false,
     }),
   );
-  const trigger = html.match(/<button[^>]*role="combobox"[^>]*>.*?<\/button>/)?.[0];
+  const trigger = (/<button[^>]*role="combobox"[^>]*>.*?<\/button>/.exec(html))?.[0];
 
   it("shows the current page size in the server-rendered trigger", () => {
     expect(trigger).toBeDefined();
@@ -94,7 +94,7 @@ describe("FileDrop (/verify and document versions)", () => {
   });
 
   it("keeps the backing file input out of the tab order and the a11y tree", () => {
-    const input = html.match(/<input[^>]*type="file"[^>]*>/)?.[0];
+    const input = (/<input[^>]*type="file"[^>]*>/.exec(html))?.[0];
     expect(input).toBeDefined();
     expect(input).toContain('tabindex="-1"');
     expect(input).toContain('aria-hidden="true"');
@@ -105,7 +105,7 @@ describe("feature graph (/roadmap/graph)", () => {
   const html = render(
     React.createElement(VaultGraphView, { graph: loadVaultGraph() }),
   );
-  const svg = html.match(/<svg[^>]*aria-label="Knowledge graph[^>]*>/)?.[0];
+  const svg = (/<svg[^>]*aria-label="Knowledge graph[^>]*>/.exec(html))?.[0];
 
   it("is a labelled group, not an img that hides the node buttons inside it", () => {
     expect(svg).toBeDefined();

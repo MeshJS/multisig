@@ -1,17 +1,17 @@
-import { DbWalletWithLegacy, Wallet } from "@/types/wallet";
+import { type DbWalletWithLegacy, type Wallet } from "@/types/wallet";
 import {
   deserializeAddress,
-  NativeScript,
+  type NativeScript,
   resolveNativeScriptHash,
   resolvePaymentKeyHash,
   resolveScriptHashDRepId,
   resolveStakeKeyHash,
   serializeNativeScript,
   serializeRewardAddress,
-  UTxO,
+  type UTxO,
 } from "@meshsdk/core";
 import { getDRepIds } from "@meshsdk/core-cst";
-import { MultisigKey, MultisigWallet } from "@/utils/multisigSDK";
+import { type MultisigKey, MultisigWallet } from "@/utils/multisigSDK";
 import {
   decodeNativeScriptFromCbor,
   buildPaymentSigScriptsFromAddresses,
@@ -342,7 +342,7 @@ export function buildWallet(
         stakeAddress,
         dRepId: dRepId || undefined,
       },
-    } as Wallet;
+    };
   }
 
   // Type 0 (Legacy): Build native script directly from payment keys in input order
@@ -359,7 +359,7 @@ export function buildWallet(
     // Build address from payment script with external stake credential hash if available
     // Legacy wallets can have external stake key hash but no individual stake keys
     const address = serializeNativeScript(
-      nativeScript as NativeScript,
+      nativeScript,
       wallet.stakeCredentialHash as undefined | string, // Use external stake credential hash if available
       network,
     ).address;
@@ -377,7 +377,7 @@ export function buildWallet(
         address,
         dRepId: dRepIdCip129,
       },
-    } as Wallet;
+    };
   }
 
   // Type 1 (SDK): Use MultisigWallet for all operations
@@ -399,7 +399,7 @@ export function buildWallet(
 
   // Enterprise (payment-only) address for non-staking SDK wallets.
   const paymentAddress = serializeNativeScript(
-    nativeScript as NativeScript,
+    nativeScript,
     wallet.stakeCredentialHash as undefined | string,
     network,
   ).address;
@@ -436,5 +436,5 @@ export function buildWallet(
       stakeAddress: mWallet.getStakeAddress(),
       dRepId: mWallet.getDRepId(),
     },
-  } as Wallet;
+  };
 }

@@ -36,7 +36,7 @@ function resolveDRepScripts(args: {
     const appScriptCbor = appWallet.scriptCbor;
     if (!multisigScriptCbor && !appScriptCbor) return null;
     const scriptCbor = multisigWallet.getKeysByRole(3)
-      ? multisigScriptCbor || appScriptCbor!
+      ? multisigScriptCbor || appScriptCbor
       : appScriptCbor || multisigScriptCbor!;
     const changeAddress = multisigScript.address;
     return { dRepId, drepCbor, scriptCbor, changeAddress };
@@ -194,7 +194,7 @@ export default async function handler(
     }
     let anchorDataHash: string;
     try {
-      anchorDataHash = hashDrepAnchor(anchorJson as object);
+      anchorDataHash = hashDrepAnchor(anchorJson);
     } catch {
       return res.status(400).json({ error: "Failed to compute anchor data hash from anchorJson" });
     }

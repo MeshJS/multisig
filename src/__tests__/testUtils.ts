@@ -1,4 +1,4 @@
-import { MultisigKey } from '../utils/multisigSDK';
+import { type MultisigKey } from '../utils/multisigSDK';
 
 // Mock key hashes for testing
 export const mockKeyHashes = {
@@ -57,8 +57,8 @@ export const mockMixedKeys: MultisigKey[] = [
 // Helper function to create valid test wallets
 export function createTestWallet(
   keys: MultisigKey[] = mockPaymentKeys,
-  required: number = 1,
-  network: number = 1,
+  required = 1,
+  network = 1,
 ) {
   return {
     name: 'Test Wallet',

@@ -5,6 +5,7 @@ export type EmailTemplate = {
 };
 
 export function escapeHtml(value: unknown): string {
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- This escaping boundary intentionally stringifies arbitrary values before escaping HTML.
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

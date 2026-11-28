@@ -233,9 +233,7 @@ export default function CreateClarityActionPage() {
 
     setLoading(true);
     try {
-      const optionsObject: {
-        [id: string]: Option;
-      } = {};
+      const optionsObject: Record<string, Option> = {};
       options.map((option) => {
         optionsObject[option.id] = {
           name: option.name,

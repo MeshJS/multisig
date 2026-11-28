@@ -1,4 +1,4 @@
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import Retire from "./drep/retire";
 import Link from "next/link";
@@ -10,13 +10,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreVertical, Info, ExternalLink, Copy, X, UserCheck, CheckCircle, Hash, Activity, TrendingUp, ChevronDown, ChevronUp, UserPlus, Edit, Search } from "lucide-react";
+import { MoreVertical, ExternalLink, Copy, X, Hash, Activity, TrendingUp, ChevronDown, ChevronUp, UserPlus, Edit, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { useToast } from "@/hooks/use-toast";
 import { useProxy } from "@/hooks/useProxy";
 import { useSiteStore } from "@/lib/zustand/site";
-import { UTxO } from "@meshsdk/core";
+import { type UTxO } from "@meshsdk/core";
 import { useProxyData } from "@/lib/zustand/proxy";
 import { useState, useEffect } from "react";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";

@@ -1,4 +1,4 @@
-import { getTxBuilder } from "@/utils/get-tx-builder";
+import { type getTxBuilder } from "@/utils/get-tx-builder";
 import { AUTO_ABSTAIN_DREP, isValidDrepId } from "@/lib/tx-draft/drep";
 
 /** Draft value for the protocol Always-No-Confidence DRep. */

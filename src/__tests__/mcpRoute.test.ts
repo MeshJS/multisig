@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import type { NextApiRequest, NextApiResponse } from "next";
+import jwt from "jsonwebtoken";
 
 import { MCP_SCOPES } from "@/lib/mcp/scopes";
 
@@ -126,7 +127,7 @@ function createResponse(): CapturedResponse {
       const raw = state._chunks.join("");
       if (!raw) return undefined;
       // Legacy-era responses may arrive as an SSE frame rather than bare JSON.
-      const sse = raw.match(/^data: (.*)$/m);
+      const sse = /^data: (.*)$/m.exec(raw);
       try {
         return JSON.parse(sse ? (sse[1] as string) : raw);
       } catch {
@@ -593,7 +594,6 @@ describe("POST /api/mcp — the stored grant is authoritative", () => {
   const OAUTH_SUBJECT = "addr_test1qpoauth";
 
   function oauthToken(scopes: string[]) {
-    const jwt = require("jsonwebtoken") as typeof import("jsonwebtoken");
     return jwt.sign(
       {
         sub: OAUTH_SUBJECT,

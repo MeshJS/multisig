@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, jest } from "@jest/globals";
+import { beforeAll, describe, expect, it, type jest } from "@jest/globals";
 import { createMockResponse } from "./apiTestUtils";
 
 /**

@@ -78,7 +78,7 @@ describe("buildRationaleJsonLd", () => {
 
   test("hash covers the exact 2-space serialization that gets pinned", () => {
     const doc = buildRationaleJsonLd("reasoning");
-    const hash = hashDrepAnchor(doc as object);
+    const hash = hashDrepAnchor(doc);
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
     // A round-trip through the pinned bytes re-hashes identically — proves
     // the uploaded document verifies against the attached anchorDataHash.
@@ -107,6 +107,7 @@ describe("uploadRationale", () => {
 
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe("/api/pinata-storage/put");
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Inspect the exact string coercion of the fetch argument supplied by this test.
     const body = JSON.parse(String(calls[0]!.init.body));
     expect(body.pathname).toMatch(/^rationale\/rationale-\d+\.jsonld$/);
     const doc = buildRationaleJsonLd("reasoning");

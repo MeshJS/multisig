@@ -395,10 +395,10 @@ export function useMigrationWalletFlowState(appWallet: Wallet, migrationId?: str
 
   // Utility functions
   function addSigner(
-    address: string = "",
-    newStakeKey: string = "",
-    drepKey: string = "",
-    description: string = "",
+    address = "",
+    newStakeKey = "",
+    drepKey = "",
+    description = "",
   ) {
     // Functional updaters so two synchronous addSigner() calls in the
     // same render append two rows. With closure-reading non-functional

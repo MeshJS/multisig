@@ -1,7 +1,7 @@
 import Button from "@/components/common/button";
 import CardUI from "@/components/ui/card-content";
 import { useToast } from "@/hooks/use-toast";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { api } from "@/utils/api";
 
 /**

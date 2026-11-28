@@ -1,4 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import type { Ballot } from "@prisma/client";
 import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
@@ -147,7 +148,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: "Bot not found" });
     }
     const scopes = parseScope(botUser.botKey.scope);
-    if (!scopeIncludes(scopes, REQUIRED_SCOPE as BotScope)) {
+    if (!scopeIncludes(scopes, REQUIRED_SCOPE)) {
       return res.status(403).json({ error: "Insufficient scope: ballot:write required" });
     }
   } else if (!applyAddressRateLimit(req, res, payload.address)) {
@@ -259,7 +260,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     const result = await db.$transaction(async (tx) => {
-      let targetBallot: any | null = null;
+      let targetBallot: Ballot | null = null;
       let createdBallot = false;
 
       if (ballotId) {
@@ -288,7 +289,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
 
         if (matches.length === 1) {
-          targetBallot = matches[0];
+          targetBallot = matches[0]!;
         } else {
           targetBallot = await tx.ballot.create({
             data: {
@@ -347,7 +348,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           anchorHashes: aligned.anchorHashes,
           rationaleComments: aligned.rationaleComments,
         } as any,
-      } as any);
+      });
 
       if (updated.count !== 1) {
         throw new Error("BALLOT_WRITE_CONFLICT");

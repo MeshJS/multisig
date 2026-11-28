@@ -16,6 +16,7 @@ function providerWith(total: number) {
     const start = (page - 1) * PAGE_SIZE;
     const end = Math.min(total, start + PAGE_SIZE);
     if (start >= total && page === 1) {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
       throw { response: { data: { status_code: 404 } } };
     }
     return Array.from({ length: Math.max(0, end - start) }, (_, i) => ({
@@ -166,7 +167,7 @@ describe("getLabel1854Registrations", () => {
   });
 
   it("drops a sweep that was in flight across a reset", async () => {
-    let release: (value: unknown) => void = () => {};
+    let release: (value: unknown) => void = () => { /* Intentionally inert test double. */ };
     const slow: Label1854Provider = {
       get: () => new Promise((resolve) => (release = resolve)),
     };

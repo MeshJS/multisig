@@ -12,7 +12,7 @@ const instantThrottle = () =>
   createBlockfrostThrottle({
     minIntervalMs: 0,
     retryDelaysMs: [],
-    sleep: async () => {},
+    sleep: async () => { /* Intentionally inert test double. */ },
   });
 
 const NOT_FOUND = JSON.stringify({ data: {}, headers: {}, status: 404 });
@@ -118,6 +118,7 @@ describe("fetchUserAssetMetadata", () => {
   it("leaves a failed lookup out so the token is retried next time", async () => {
     const provider = {
       get: async (path: string) => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         if (path === "/assets/bad") throw NOT_FOUND;
         return { metadata: { name: "Good", decimals: 2 } };
       },
@@ -175,7 +176,7 @@ describe("fetchUserAssetMetadata", () => {
 
   it("joins a lookup another caller already has in flight", async () => {
     let calls = 0;
-    let release: () => void = () => {};
+    let release: () => void = () => { /* Intentionally inert test double. */ };
     const provider = {
       get: () =>
         new Promise((resolve) => {
@@ -249,6 +250,7 @@ describe("fetchUserAssetMetadata", () => {
     const provider = {
       get: async () => {
         calls++;
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         throw RATE_LIMITED;
       },
     };

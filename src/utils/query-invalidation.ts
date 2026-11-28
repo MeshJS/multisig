@@ -5,7 +5,7 @@
  * Only invalidates related queries, not all queries.
  */
 
-import type { RouterOutputs } from "@/utils/api";
+
 
 /**
  * Cache tags for different data types

@@ -277,14 +277,14 @@ describe("botBallotsUpsert API", () => {
   });
 
   it("fails open when the chain indexer is unavailable", async () => {
-    global.fetch = jest.fn(async () => { throw new Error("indexer down"); }) as never;
+    global.fetch = jest.fn(async () => { throw new Error("indexer down"); });
     const fresh = {
       id: "b-new", walletId: "wallet-1", type: 1, description: "Advisory", updatedAt: new Date(),
       items: [], itemDescriptions: [], choices: [], anchorUrls: [], anchorHashes: [], rationaleComments: [],
     };
     txMock.ballot.findMany.mockResolvedValue([]);
     txMock.ballot.create.mockResolvedValue(fresh);
-    txMock.ballot.updateMany.mockResolvedValue({ count: 1 } as never);
+    txMock.ballot.updateMany.mockResolvedValue({ count: 1 });
     txMock.ballot.findUnique.mockResolvedValue(fresh);
     const req = {
       method: "POST",

@@ -3,12 +3,12 @@ import { api } from "@/utils/api";
 import { useToast } from "@/hooks/use-toast";
 import { useUserStore } from "@/lib/zustand/user";
 import { useWalletsStore } from "@/lib/zustand/wallets";
-import { checkValidAddress, checkValidStakeKey } from "@/utils/multisigSDK";
+
 import { getFirstAndLast } from "@/utils/strings";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import useUser from "@/hooks/useUser";
 import { User, Copy, Check } from "lucide-react";
 

@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 // import { list } from "@vercel/blob";
-import { env } from "@/env";
+
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "GET") {

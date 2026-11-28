@@ -34,7 +34,7 @@ function utxo(amount: { unit: string; quantity: string }[]): UTxO {
   return {
     input: { txHash: "h".repeat(64), outputIndex: 0 },
     output: { address: realTestAddresses.address1, amount },
-  } as UTxO;
+  };
 }
 
 describe("validateDraft", () => {

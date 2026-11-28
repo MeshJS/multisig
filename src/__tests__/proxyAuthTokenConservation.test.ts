@@ -30,7 +30,7 @@ function mkUtxo(
   txHash: string,
   outputIndex = 0,
 ): UTxO {
-  return { input: { txHash, outputIndex }, output: { address, amount } } as UTxO;
+  return { input: { txHash, outputIndex }, output: { address, amount } };
 }
 
 function createRecordingBuilder() {

@@ -4,7 +4,7 @@ import useAppWallet from "@/hooks/useAppWallet";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { getDRepIds } from "@meshsdk/core-cst";
+
 import useTransaction from "@/hooks/useTransaction";
 import DRepForm from "./drepForm";
 import { getDRepMetadata } from "./drepMetadata";
@@ -15,8 +15,8 @@ import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
 import { proxyModeBlockedMessage, resolveProxyMode } from "@/lib/proxy/proxyMode";
 import { ProxyModeNotice } from "@/components/multisig/proxy/ProxyModeNotice";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+
 import { api } from "@/utils/api";
 import { useProxy } from "@/hooks/useProxy";
 import { useToast } from "@/hooks/use-toast";
@@ -168,7 +168,7 @@ export default function RegisterDRep({ onClose }: RegisterDRepProps = {}) {
       if (!multisigScriptCbor && !appScriptCbor) {
         throw new Error("Script CBOR not found");
       }
-      scriptCbor = multisigWallet.getKeysByRole(3) ? (multisigScriptCbor || appScriptCbor!) : (appScriptCbor || multisigScriptCbor!);
+      scriptCbor = multisigWallet.getKeysByRole(3) ? (multisigScriptCbor || appScriptCbor) : (appScriptCbor || multisigScriptCbor!);
       changeAddress = multisigScript.address;
     } else {
       // Legacy wallet: use appWallet values (computed with input order preserved)

@@ -8,8 +8,8 @@ import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { useToast } from "@/hooks/use-toast";
 import useMeshWallet from "@/hooks/useMeshWallet";
 import { useUserStore } from "@/lib/zustand/user";
-import React, { useState, useCallback, useMemo, useEffect } from "react";
-import CardUI from "@/components/ui/card-content";
+import React, { useState, useCallback, useMemo } from "react";
+
 import {
   Select,
   SelectContent,

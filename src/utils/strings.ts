@@ -1,16 +1,16 @@
 export function getFirstAndLast(
   value: string,
-  firstN: number = 15,
-  lastN: number = 6,
+  firstN = 15,
+  lastN = 6,
 ) {
   return `${value.slice(0, firstN)}...${value.slice(-lastN)}`;
 }
 
 export function truncateTokenSymbol(
   symbol: string,
-  maxLength: number = 20,
-  firstN: number = 8,
-  lastN: number = 6,
+  maxLength = 20,
+  firstN = 8,
+  lastN = 6,
 ): string {
   if (symbol.length <= maxLength) {
     return symbol;

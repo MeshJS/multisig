@@ -31,7 +31,7 @@ describe("getProposalStatus", () => {
         enacted_epoch: undefined as unknown as number | null,
         dropped_epoch: undefined as unknown as number | null,
         expired_epoch: undefined as unknown as number | null,
-      } as unknown as ProposalDetails),
+      }),
     ).toBe("active");
   });
 });

@@ -92,7 +92,7 @@ export default function SummonTab() {
 function extractInviteId(input: string): string | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
-  const match = trimmed.match(/\/wallets\/invite\/([^/?#]+)/);
+  const match = /\/wallets\/invite\/([^/?#]+)/.exec(trimmed);
   if (match && match[1]) return match[1];
   // Allow pasting just the id
   if (/^[a-z0-9_-]{8,}$/i.test(trimmed)) return trimmed;

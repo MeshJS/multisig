@@ -23,7 +23,7 @@ function utxo(
   return {
     input: { txHash: "a".repeat(64), outputIndex: index },
     output: { address: WALLET_ADDRESS, amount },
-  } as UTxO;
+  };
 }
 
 /** Bare builder — no fetcher; `complete` is never called in these tests. */

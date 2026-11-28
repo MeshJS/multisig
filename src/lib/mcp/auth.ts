@@ -166,13 +166,13 @@ export async function resolveMcpCaller(
  */
 export function mcpScopesForBot(botScopes: BotScope[]): McpScope[] {
   const granted: McpScope[] = [];
-  if (scopeIncludes(botScopes, "multisig:read" as BotScope)) {
+  if (scopeIncludes(botScopes, "multisig:read")) {
     granted.push("wallets:read");
   }
-  if (scopeIncludes(botScopes, "governance:read" as BotScope)) {
+  if (scopeIncludes(botScopes, "governance:read")) {
     granted.push("governance:read");
   }
-  if (scopeIncludes(botScopes, "ballot:write" as BotScope)) {
+  if (scopeIncludes(botScopes, "ballot:write")) {
     granted.push("ballots:write");
   }
   return granted;

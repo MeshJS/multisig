@@ -173,14 +173,14 @@ export async function getDRepMetadata(
 
   // Compact the JSON-LD document for readability
   const compacted = await jsonld.compact(
-    expanded as unknown as JsonLdDocument,
+    expanded,
     metadata["@context"] as unknown as ContextDefinition
   );
 
   // Normalize (canonicalize) the JSON-LD document per CIP-100/CIP-119
   // This produces a canonical form that should be used for hashing
   const normalized = await jsonld.normalize(
-    compacted as unknown as JsonLdDocument,
+    compacted,
     {
       algorithm: "URDNA2015",
       format: "application/n-quads",

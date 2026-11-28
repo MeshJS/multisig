@@ -169,7 +169,7 @@ describe("verifyProof", () => {
         },
       ],
     };
-    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => { /* Intentionally inert test double. */ });
     expect(await codeOf(documents().verifyProof({ proof }))).toBe(
       "BAD_REQUEST",
     );

@@ -69,7 +69,7 @@ const handlerPromise = import("../pages/api/v1/og");
 beforeEach(() => {
   dnsLookupMock.mockReset();
   fetchMock.mockReset();
-  global.fetch = fetchMock as unknown as typeof fetch;
+  global.fetch = fetchMock;
   envState.OG_ALLOWED_HOSTS = undefined;
 });
 
@@ -202,6 +202,7 @@ describe("og handler — request bounds", () => {
     const { res, status } = makeRes();
     await handler(makeReq("https://github.com/x", { method: "POST" }), res);
     expect(status).toHaveBeenCalledWith(405);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(res.setHeader).toHaveBeenCalledWith("Allow", "GET");
     expect(fetchMock).not.toHaveBeenCalled();
   });

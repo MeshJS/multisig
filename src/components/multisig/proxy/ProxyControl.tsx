@@ -24,7 +24,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertCircle, ChevronDown, ChevronUp, Wallet, TrendingUp, Info } from "lucide-react";
-import useUTXOS from "@/hooks/useUTXOS";
+
 
 interface ProxyOutput {
   address: string;

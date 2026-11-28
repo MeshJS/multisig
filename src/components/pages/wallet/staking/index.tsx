@@ -3,7 +3,7 @@ import StakingActionCard from "./StakingActions/stakingActionCard";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/utils/get-provider";
-import StakingInfoCard, { StakingInfo } from "./stakingInfoCard";
+import StakingInfoCard, { type StakingInfo } from "./stakingInfoCard";
 import PoolSelector from "./poolSelector";
 import useAppWallet from "@/hooks/useAppWallet";
 import { AUTO_ABSTAIN_DREP } from "@/lib/tx-draft/drep";

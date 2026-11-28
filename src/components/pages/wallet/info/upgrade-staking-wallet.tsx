@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { MultisigWallet } from "@/utils/multisigSDK";
-import { getBalanceFromUtxos, getBalance } from "@/utils/getBalance";
+import { getBalanceFromUtxos } from "@/utils/getBalance";
 
 import CardUI from "@/components/ui/card-content";
 import { useWalletsStore } from "@/lib/zustand/wallets";

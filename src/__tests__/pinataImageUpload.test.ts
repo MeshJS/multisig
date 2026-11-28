@@ -115,7 +115,7 @@ function pinataOk() {
 }
 
 beforeAll(async () => {
-  global.fetch = fetchMock as unknown as typeof fetch;
+  global.fetch = fetchMock;
   ({ default: handler, config: routeConfig } = await import(
     "../pages/api/pinata-storage/image/put"
   ));

@@ -7,17 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  Send, 
-  RefreshCw, 
-  AlertCircle,
-  Plus,
-  Trash2,
-  Wallet,
-  Activity,
-  ArrowRight,
-  X
-} from "lucide-react";
+import { Send, RefreshCw, AlertCircle, Plus, Trash2, Wallet, Activity, ArrowRight } from "lucide-react";
 import ProxyFlowAnimation from "./ProxyFlowAnimation";
 
 interface ProxyOutput {

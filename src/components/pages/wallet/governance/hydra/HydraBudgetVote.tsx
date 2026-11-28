@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import useMeshWallet from "@/hooks/useMeshWallet";
-import { Info, Loader, Check, X, ExternalLink } from "lucide-react";
+import { Info, Loader, Check, ExternalLink } from "lucide-react";
 
 import useAppWallet from "@/hooks/useAppWallet";
 import useMultisigWallet from "@/hooks/useMultisigWallet";

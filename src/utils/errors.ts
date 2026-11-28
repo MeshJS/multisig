@@ -16,9 +16,11 @@ function extractMessage(error: unknown): string {
     try {
       return JSON.stringify(error);
     } catch {
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Preserve the last-resort string representation of unknown wallet/provider errors.
       return String(error);
     }
   }
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Preserve the last-resort string representation of unknown wallet/provider errors.
   return String(error ?? "");
 }
 

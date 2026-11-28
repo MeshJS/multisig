@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import CardUI from "@/components/ui/card-content";
+
 import { AlertCircle, CheckCircle, Loader, ArrowRight, ExternalLink } from "lucide-react";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useProxyStore } from "@/lib/zustand/proxy";

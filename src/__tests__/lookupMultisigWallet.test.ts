@@ -248,6 +248,7 @@ describe("lookupMultisigWallet API", () => {
     try {
       const fresh = createMockResponse();
       await handler(req, fresh);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
       expect(fresh.setHeader).toHaveBeenCalledWith(
         "Cache-Control",
         "public, max-age=60, stale-while-revalidate=120",
@@ -256,6 +257,7 @@ describe("lookupMultisigWallet API", () => {
       nowSpy.mockReturnValue(1_000_000 + 45_000);
       const later = createMockResponse();
       await handler(req, later);
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
       expect(later.setHeader).toHaveBeenCalledWith(
         "Cache-Control",
         "public, max-age=15, stale-while-revalidate=120",

@@ -1,6 +1,6 @@
 import Dexie from "dexie";
 import { get, set, del } from "idb-keyval";
-import { StateStorage } from "zustand/middleware";
+import { type StateStorage } from "zustand/middleware";
 
 export const INDEXEDDB_DBNAME = "mesh-multisig";
 export const INDEXEDDB_STORENAME_WALLETS = "multisig";

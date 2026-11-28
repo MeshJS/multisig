@@ -7,6 +7,7 @@
 // Tests that need real values can override per-test with `process.env.X = ...`
 // inside `beforeEach`.
 
+// eslint-disable-next-line @typescript-eslint/dot-notation -- Bracket access permits the test-only NODE_ENV assignment despite Next's readonly declaration.
 process.env['NODE_ENV'] = process.env['NODE_ENV'] || 'test';
 process.env.SKIP_ENV_VALIDATION = '1';
 

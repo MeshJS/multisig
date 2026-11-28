@@ -190,6 +190,7 @@ describe("governanceActiveProposals API", () => {
         };
       }
       if (path === "/governance/proposals/tx-active/0/metadata") {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         throw JSON.stringify({
           data: {
             error: "Not Found",
@@ -229,6 +230,7 @@ describe("governanceActiveProposals API", () => {
   it("returns an empty proposal list when Blockfrost has no governance proposals", async () => {
     providerGetMock.mockImplementation(async (path) => {
       if (path.startsWith("/governance/proposals?")) {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         throw {
           response: {
             data: {
@@ -278,6 +280,7 @@ describe("governanceActiveProposals API", () => {
         ];
       }
       if (path === "/governance/proposals/tx-active/0") {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         throw {
           response: {
             status: 500,
@@ -286,6 +289,7 @@ describe("governanceActiveProposals API", () => {
         };
       }
       if (path === "/governance/proposals/tx-active/0/metadata") {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         throw {
           response: {
             status: 500,
@@ -333,6 +337,7 @@ describe("governanceActiveProposals API", () => {
         };
       }
       if (path === "/governance/proposals/tx-active/0/metadata") {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         throw { status: 404 };
       }
       return null;
@@ -393,6 +398,7 @@ describe("governanceActiveProposals API", () => {
     const originalKey = process.env.BLOCKFROST_API_KEY_PREPROD;
     process.env.BLOCKFROST_API_KEY_PREPROD = "preprod-key";
     const fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Inspect the exact string coercion of the fetch argument supplied by this test.
       const urlString = String(url);
       if (urlString.includes("/governance/proposals?")) {
         return new Response(
@@ -582,6 +588,7 @@ describe("governanceActiveProposals API", () => {
 
     it("still answers with currentEpoch null when the epoch lookup fails", async () => {
       providerGetMock.mockImplementation(async (path) => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         if (path === "/epochs/latest") throw { status: 503, data: {} };
         if (path.startsWith("/governance/proposals?")) return [];
         return null;
@@ -669,6 +676,7 @@ describe("governanceActiveProposals API", () => {
       const epoch = deferred();
       providerGetMock.mockImplementation(async (path) => {
         if (path === "/epochs/latest") return epoch.promise;
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         if (path.startsWith("/governance/proposals?")) throw { status: 429, data: {} };
         return null;
       });
@@ -689,7 +697,9 @@ describe("governanceActiveProposals API", () => {
 
     it("answers 500 when the list fails for another reason", async () => {
       providerGetMock.mockImplementation(async (path) => {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         if (path === "/epochs/latest") throw { status: 500, data: {} };
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         if (path.startsWith("/governance/proposals?")) throw { status: 500, data: {} };
         return null;
       });

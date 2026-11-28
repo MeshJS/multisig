@@ -1,4 +1,4 @@
-import { checkSignature, DataSignature, IWallet } from "@meshsdk/core";
+import { checkSignature, type DataSignature, type IWallet } from "@meshsdk/core";
 
 export type SignRole = 0 | 2 | 3;
 

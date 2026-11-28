@@ -1,6 +1,6 @@
 import CardUI from "@/components/ui/card-content";
 import { getProvider } from "@/utils/get-provider";
-import RowLabelInfo from "@/components/common/row-label-info";
+
 import { useSiteStore } from "@/lib/zustand/site";
 import type { ProposalMetadata, ProposalDetails, ProposalParameters, ProposalWithdrawal } from "@/types/governance";
 import { useEffect, useState } from "react";
@@ -82,7 +82,7 @@ function WalletGovernanceProposalContent({ id }: { id: string }) {
 
         // Fetch proposal details
         try {
-          const details = (await detailsPromise) as ProposalDetails | null;
+          const details = (await detailsPromise);
           if (!details) {
             return;
           }

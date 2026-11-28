@@ -1,4 +1,5 @@
 import type { InferGetServerSidePropsType } from "next";
+import Link from "next/link";
 
 import VaultBrowser from "@/components/pages/vault/browser";
 import { loadVaultTrustView } from "@/lib/vault-trust";
@@ -31,12 +32,13 @@ export default function Page({
         </p>
         <p className="my-4 max-w-3xl text-sm text-neutral-500 dark:text-neutral-300 lg:text-base">
           New to this?{" "}
-          <a
+          <Link
             href="/blog/how-to-use-shielded-sign-off"
+            prefetch={false}
             className="underline underline-offset-2"
           >
             How to use shielded sign-off
-          </a>{" "}
+          </Link>{" "}
           explains the two kinds of link, why one hub is not enough, and exactly
           what a disclosure gives away.
         </p>

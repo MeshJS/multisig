@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import ImgDragAndDrop from "@/components/common/ImgDragAndDrop";
 import Link from "next/link";
 import type { UTxO } from "@meshsdk/core";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 
 
 interface DRepFormProps {

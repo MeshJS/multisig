@@ -1,11 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { ArrowUpRight, MoreHorizontal, UserMinus, UserPlus, UserCog, Award } from "lucide-react";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { dateToFormatted, getFirstAndLast, truncateTokenSymbol, lovelaceToAda } from "@/utils/strings";
-import { OnChainTransaction } from "@/types/transaction";
+import { type OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";
-import { Transaction } from "@prisma/client";
+import { type Transaction } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -305,7 +305,7 @@ function RowAction({
     if (allTxInputsFromSameAddress) {
       const txBuilder = await getTxBuilder(network);
 
-      const _amount: { [unit: string]: number } = {};
+      const _amount: Record<string, number> = {};
 
       for (const output of transaction.outputs) {
         if (output.address === appWallet.address) {

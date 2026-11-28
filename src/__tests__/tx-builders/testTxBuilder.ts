@@ -5,6 +5,6 @@ export function getTestTxBuilder(overrides?: Parameters<typeof createMockProvide
   const provider = createMockProvider(overrides);
   return new MeshTxBuilder({
     fetcher: provider as any,
-    evaluator: provider as any,
+    evaluator: provider,
   });
 }

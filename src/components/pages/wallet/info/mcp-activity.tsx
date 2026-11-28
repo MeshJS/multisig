@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, Loader2, Plug } from "lucide-react";
 
 import CardUI from "@/components/ui/card-content";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+
 import { api } from "@/utils/api";
 import type { Wallet } from "@/types/wallet";
 

@@ -323,7 +323,7 @@ export default function TimelineCanvas({
     useMemo(() => {
       const detailByHash = new Map<string, TxFlowData>();
       newestFirst.forEach((ref, index) => {
-        const data = queries[index]?.data as TxFlowData | undefined;
+        const data = queries[index]?.data;
         if (data) detailByHash.set(ref.txHash, data);
       });
       // Full flow when the detail fetch has landed, store-data fallback

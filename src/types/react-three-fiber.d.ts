@@ -1,5 +1,5 @@
-import { Object3DNode } from "@react-three/fiber";
-import ThreeGlobe from "three-globe";
+import { type Object3DNode } from "@react-three/fiber";
+import type ThreeGlobe from "three-globe";
 
 declare module "react" {
   namespace JSX {

@@ -31,6 +31,7 @@ export default function BotSetupPage({ markdown }: Props) {
     <main className="mx-auto w-full min-w-0 max-w-3xl px-4 py-8">
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-semibold">Bot Setup</h1>
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- This opens a raw API response, not a Next.js page. */}
         <a
           className="text-sm underline text-muted-foreground"
           href="/api/v1/botSetupGuide"

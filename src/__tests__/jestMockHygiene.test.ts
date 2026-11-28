@@ -65,7 +65,7 @@ describe("jest.mock hygiene", () => {
       // Split on jest.mock( so each fragment is one call's arguments, letting a
       // `virtual: true` be attributed to the specifier it belongs to.
       for (const call of source.split(/jest\.mock\(/).slice(1)) {
-        const specifier = call.match(/^\s*["']([^"']+)["']/)?.[1];
+        const specifier = (/^\s*["']([^"']+)["']/.exec(call))?.[1];
         if (!specifier) continue;
         if (!/\{\s*virtual:\s*true\s*\}/.test(call)) continue;
         if (resolvesToRealFile(specifier)) {

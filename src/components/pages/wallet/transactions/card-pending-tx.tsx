@@ -1,7 +1,7 @@
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { Send } from "lucide-react";
 
 export default function CardPendingTx({ appWallet }: { appWallet: Wallet }) {

@@ -51,7 +51,7 @@ export function applyStrictRateLimit(
 }
 
 /** Stricter rate limit for bot-authenticated requests (by botId). Call after verifying JWT. Default 40/min per bot. */
-export function applyBotRateLimit(req: any, res: any, botId: string, maxRequests: number = 40): boolean {
+export function applyBotRateLimit(req: any, res: any, botId: string, maxRequests = 40): boolean {
   return applyRateLimitResult(res, checkRateLimitWithInfo(`bot:${botId}`, maxRequests, 60 * 1000));
 }
 
@@ -61,7 +61,7 @@ export function applyBotRateLimit(req: any, res: any, botId: string, maxRequests
  * identities can call. Keyed on the principal so it survives IP rotation.
  * Call after verifying the JWT. Default 40/min per address.
  */
-export function applyAddressRateLimit(req: any, res: any, address: string, maxRequests: number = 40): boolean {
+export function applyAddressRateLimit(req: any, res: any, address: string, maxRequests = 40): boolean {
   return applyRateLimitResult(res, checkRateLimitWithInfo(`addr:${address}`, maxRequests, 60 * 1000));
 }
 

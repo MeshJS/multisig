@@ -729,6 +729,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       // A token minted by task_prepare_payout carries the task ids; the hooks
       // link them to the created transaction. Other tokens pass through.
       return runTransactionPropose(
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Keep the existing token coercion; runTransactionPropose performs token validation.
         { draftToken: String(args.draftToken ?? "") },
         ctx,
         withTaskPayoutHooks({

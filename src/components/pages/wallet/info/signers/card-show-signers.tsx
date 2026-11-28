@@ -13,7 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import Image from "next/image";
 import getDiscordAvatar from "@/lib/discord/getDiscordAvatar";
 

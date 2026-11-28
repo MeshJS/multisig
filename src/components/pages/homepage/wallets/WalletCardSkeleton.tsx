@@ -1,4 +1,4 @@
-import CardUI from "@/components/common/card-content";
+
 import RowLabelInfo from "@/components/common/row-label-info";
 import WalletBalanceSkeleton from "./WalletBalanceSkeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { Wallet } from "@/types/wallet";
-import { MoreVertical, Users, Archive, User } from "lucide-react";
+import { type Wallet } from "@/types/wallet";
+import { MoreVertical, Archive, User } from "lucide-react";
 import { api } from "@/utils/api";
 import { useToast } from "@/hooks/use-toast";
 import { useUserStore } from "@/lib/zustand/user";
@@ -11,7 +11,7 @@ import { getBalanceFromUtxos } from "@/utils/getBalance";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import ImgDragAndDrop from "@/components/common/ImgDragAndDrop";
 import IPFSImage from "@/components/common/ipfs-image";
-import Image from "next/image";
+
 
 import {
   DropdownMenu,
@@ -36,7 +36,7 @@ import RowLabelInfo from "@/components/ui/row-label-info";
 import { NativeScriptSection } from "./inspect-script";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, ChevronUp, Code2, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Code2 } from "lucide-react";
 import Code from "@/components/ui/code";
 import { Carousel } from "@/components/ui/carousel";
 import { type MultisigWallet } from "@/utils/multisigSDK";

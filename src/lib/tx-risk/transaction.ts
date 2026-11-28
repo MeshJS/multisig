@@ -182,7 +182,11 @@ export function assessTransactionRisks(
     tx = decodeTransaction(txHex);
     result.txHash = resolveTxHash(txHex).toLowerCase();
     const bodyNetwork = tx.body().network_id();
-    if (bodyNetwork && bodyNetwork.kind() !== networkId(ctx.network))
+    if (
+      bodyNetwork &&
+      bodyNetwork.kind() !==
+        (ctx.network === 1 ? csl.NetworkIdKind.Mainnet : csl.NetworkIdKind.Testnet)
+    )
       throw new Error("Transaction network differs from selected network.");
   } catch {
     result.errors.push({

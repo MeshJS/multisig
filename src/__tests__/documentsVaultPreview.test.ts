@@ -21,7 +21,7 @@ describe("documents vault preview page", () => {
 
   it("supplies a view that survives Next's JSON serialisation", async () => {
     const { loadVaultPreviewProps } = await import(MODULE);
-    const result = { props: loadVaultPreviewProps() } as Props;
+    const result = { props: loadVaultPreviewProps() };
 
     expect(result.props.view).not.toBeNull();
     expect(result.props.view!.hubs.length).toBeGreaterThan(0);
@@ -47,7 +47,7 @@ describe("documents vault preview page", () => {
       .mockImplementation(() => undefined);
 
     const { loadVaultPreviewProps } = await import(MODULE);
-    const result = { props: loadVaultPreviewProps() } as Props;
+    const result = { props: loadVaultPreviewProps() };
 
     // Degraded, not thrown: a Markdown edit in an unrelated directory must not
     // be able to take down a wallet's Documents section.

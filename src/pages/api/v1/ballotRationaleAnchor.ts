@@ -10,7 +10,7 @@ import {
   enforceBodySize,
 } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
-import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
+import { parseScope, scopeIncludes } from "@/lib/auth/botKey";
 import { assertBotWalletAccess, BotAccessError } from "@/lib/auth/botAccess";
 import { assertWalletAccess } from "@/server/api/auth";
 import { pinJsonLd, PinataUploadError } from "@/lib/server/pinataUpload";
@@ -75,7 +75,7 @@ export default async function handler(
       return res.status(401).json({ error: "Bot not found" });
     }
     const scopes = parseScope(botUser.botKey.scope);
-    if (!scopeIncludes(scopes, REQUIRED_SCOPE as BotScope)) {
+    if (!scopeIncludes(scopes, REQUIRED_SCOPE)) {
       return res.status(403).json({ error: "Insufficient scope: ballot:write required" });
     }
   } else if (!applyAddressRateLimit(req, res, payload.address)) {
@@ -171,7 +171,7 @@ export default async function handler(
     const { hashDrepAnchor } = await import("@meshsdk/core");
     const anchor = buildRationaleAnchor(
       input,
-      (doc) => hashDrepAnchor(doc as never),
+      (doc) => hashDrepAnchor(doc),
       `rationale-${proposalId}`,
     );
 

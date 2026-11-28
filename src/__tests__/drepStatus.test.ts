@@ -60,6 +60,7 @@ describe("fetchDrepStatus", () => {
     // DRep failed as DREP_LOOKUP_FAILED instead of telling the user to
     // register first.
     const p = provider(async () => {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
       throw MESH_404;
     });
     await expect(fetchDrepStatus(p, "drep1abc")).resolves.toEqual({ active: false });
@@ -67,6 +68,7 @@ describe("fetchDrepStatus", () => {
 
   it("rethrows Mesh's string rejection for any other status", async () => {
     const p = provider(async () => {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
       throw MESH_500;
     });
     await expect(fetchDrepStatus(p, "drep1abc")).rejects.toBe(MESH_500);

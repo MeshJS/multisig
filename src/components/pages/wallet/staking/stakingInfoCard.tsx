@@ -1,6 +1,6 @@
 import CardUI from "@/components/ui/card-content";
 import RowLabelInfo from "@/components/common/row-label-info";
-import { numberWithCommas } from "@/utils/strings";
+
 
 export interface StakingInfo {
   poolId: string;

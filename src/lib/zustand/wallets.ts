@@ -1,35 +1,33 @@
 import { create } from "zustand";
-import { Asset, UTxO } from "@meshsdk/core";
-import { OnChainTransaction } from "@/types/transaction";
-import { BlockfrostDrepInfo } from "@/types/governance";
+import { type Asset, type UTxO } from "@meshsdk/core";
+import { type OnChainTransaction } from "@/types/transaction";
+import { type BlockfrostDrepInfo } from "@/types/governance";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { zustandStorage } from "../indexeddb";
 
 interface State {
-  walletsUtxos: { [walletId: string]: UTxO[] };
+  walletsUtxos: Record<string, UTxO[]>;
   setWalletsUtxos: (walletId: string, utxos: UTxO[]) => void;
 
-  walletTransactions: { [walletId: string]: OnChainTransaction[] };
+  walletTransactions: Record<string, OnChainTransaction[]>;
   setWalletTransactions: (
     walletId: string,
     transactions: OnChainTransaction[],
   ) => void;
 
-  walletLastUpdated: { [walletId: string]: number };
+  walletLastUpdated: Record<string, number>;
   setWalletLastUpdated: (walletId: string, timestamp: number) => void;
 
   walletAssets: Asset[];
   setWalletAssets: (assets: Asset[]) => void;
 
-  walletAssetMetadata: {
-    [unit: string]: {
+  walletAssetMetadata: Record<string, {
       assetName: string;
       decimals: number;
       image: string;
       ticker: string;
       policyId: string;
-    };
-  };
+    }>;
   setWalletAssetMetadata: (
     unit: string,
     assetName: string,

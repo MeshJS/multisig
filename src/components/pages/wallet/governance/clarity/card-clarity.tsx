@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import CardUI from "@/components/ui/card-content";
 import { api } from "@/utils/api";
 // import { CheckCircleIcon } from "@heroicons/react/24/solid";

@@ -41,12 +41,12 @@ function checkRateLimitInternal(key: string, maxRequests: number, windowMs: numb
   };
 }
 
-export function checkRateLimit(ip: string, maxRequests: number = 10, windowMs: number = 60 * 1000): boolean {
+export function checkRateLimit(ip: string, maxRequests = 10, windowMs: number = 60 * 1000): boolean {
   return checkRateLimitInternal(ip, maxRequests, windowMs).allowed;
 }
 
 /** Stricter rate limit by arbitrary key (e.g. bot:${botId}). Use for bot-authenticated requests. */
-export function checkRateLimitByKey(key: string, maxRequests: number = 40, windowMs: number = 60 * 1000): boolean {
+export function checkRateLimitByKey(key: string, maxRequests = 40, windowMs: number = 60 * 1000): boolean {
   return checkRateLimitInternal(key, maxRequests, windowMs).allowed;
 }
 

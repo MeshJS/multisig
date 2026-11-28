@@ -336,8 +336,10 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 | Task | Issues |
 |------|--------|
 | **Connected-wallet onboarding, resource access & responsive layouts** — keep the landing page available after sign-in; add persistent Learn & Help navigation, standalone MCP documentation, discoverable bot/developer guides, and contextual, reopenable onboarding. Fix Overview AI activity/Contacts placement, Assets card width, profile bot grant controls, and task board crowding; extend responsive checks to tablet widths and populated states. Scope and acceptance criteria: [feature note](vault/features/Connected%20Wallet%20Onboarding%20%26%20Resource%20Access.md). Implementation complete; [acceptance evidence](docs/connected-wallet-resource-acceptance.md), final lint gate open. | |
-| Backlog cleanup, dependency/security updates | |
+| **Backlog cleanup, dependency/security updates** — November lint cleanup on `fix/preprod-lint-issues`: restore the lint command with direct ESLint execution and updated configuration; clean up imports, redundant type assertions, enum comparisons, callbacks, and test lint issues. Behavior-sensitive React refactors are tracked separately for [January](#month-10--january-2027). Implemented and verified locally; pending commit and merge. | |
 | Monthly report | |
+
+**Backlog cleanup verification — 2026-11-28:** `npm run lint` passes with **0 errors and 4,615 warnings**; `npm run typecheck` and `npm run build` pass; `npm test -- --runInBand` passes **2,736 tests across 211 suites**, with 2 existing skipped tests. The five deferred React rule groups in [eslint.preprod-deferred.mjs](eslint.preprod-deferred.mjs) apply only to 71 listed files; new files retain upstream error severity, and the existing hook and wallet-signing lint guardrails remain enabled. Browser wallet flows, live-chain transactions, and the separate database integration suite were not rerun for this cleanup.
 
 ---
 
@@ -364,7 +366,7 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 ## Month 10 — January 2027
 
-**Focus:** Invite flow.
+**Focus:** Invite flow and deferred lint cleanup.
 
 **Quirin**
 
@@ -376,7 +378,7 @@ Revised 2026-07-26: the governance metadata fix closed in June, and the bot plat
 
 | Task | Issues |
 |------|--------|
-| Open slot — the Discover page moved up to M5 to ride the delivered Wallet V2 discovery work. Reserve for spillover or pull forward from M11 | |
+| **Deferred lint cleanup** — resolve the behavior-sensitive React diagnostics tracked in [eslint.preprod-deferred.mjs](eslint.preprod-deferred.mjs): immutability, manual memoization, purity, refs, and state updates in effects. Review and regression-test the affected flows, remove each temporary warning override once fixed, and restore upstream error severity across the deferred list. Proof of completion: the deferred list is cleared, `npm run lint` passes, and regression checks cover the refactored behavior. | |
 
 ---
 
@@ -515,6 +517,7 @@ Aggregated view of the 12-month roadmap split by contributor. Each task has a si
 - [M6] Project task board with multisig payouts — let users and agents create and manage project tasks, optionally define one or more payment recipients and amounts, and prepare payouts for multisig review and approval
 - [M7] Output datum controls — attach and edit validated inline datum values on individual transaction outputs under Advanced, preserve each output-to-datum association through draft editing, and encode the datums in the generated unsigned transaction
 - [M7] Plutus script-spend and redeemer controls — configure Plutus-controlled inputs with their script, datum source, and validated redeemer under Advanced; use an ADA-only collateral UTxO supplied by the connected signer, require that collateral owner's signature, show the amount at risk, and evaluate and preserve the script data in the generated unsigned transaction. Automatic collateral creation, reservation, and collateral-return management remain in #221
-- [M8] Backlog cleanup, dependency/security updates
+- [M8] Backlog cleanup, dependency/security updates — lint command/configuration repair and source/test cleanup on `fix/preprod-lint-issues`; lint, typecheck, unit tests, and production build verified locally on 2026-11-28; deferred React refactors scheduled for M10
 - [M9] User profiles and contacts
+- [M10] Deferred lint cleanup — resolve the React diagnostics in [eslint.preprod-deferred.mjs](eslint.preprod-deferred.mjs), regression-test the affected flows, and remove the temporary warning overrides
 - [M11] Document Sign-Off v3 — Collaboration & standards (research)

@@ -25,7 +25,7 @@ const mkUtxo = (
       address,
       amount: [{ unit: "lovelace", quantity: lovelace }],
     },
-  }) as UTxO;
+  });
 
 function createTxBuilderMock() {
   const txOuts: Array<{ address: string; amount: UTxO["output"]["amount"] }> = [];
@@ -131,7 +131,7 @@ describe("buildProxySetupTx", () => {
               { unit: setup.authTokenId, quantity: "10" },
             ],
           },
-        }) as UTxO,
+        }),
       ],
       collateral: mkUtxo("addr_test_collateral", "5000000", "d".repeat(64), 3),
       walletAddress: "addr_test_wallet",
@@ -173,7 +173,7 @@ describe("buildProxySetupTx", () => {
               { unit: setup.authTokenId, quantity: "1" },
             ],
           },
-        }) as UTxO,
+        }),
       ],
       authTokenUtxo: ({
         ...mkUtxo("addr_test_wallet", "3000000", "d".repeat(64), 3),
@@ -184,7 +184,7 @@ describe("buildProxySetupTx", () => {
             { unit: setup.authTokenId, quantity: "1" },
           ],
         },
-      }) as UTxO,
+      }),
       collateral: mkUtxo("addr_test_collateral", "5000000", "e".repeat(64), 4),
       walletAddress: "addr_test_wallet",
     });

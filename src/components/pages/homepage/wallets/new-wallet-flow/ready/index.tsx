@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/router";
 import { CheckCircle2, Copy } from "lucide-react";
 
@@ -6,9 +6,9 @@ import { api } from "@/utils/api";
 import { useToast } from "@/hooks/use-toast";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
-import { buildWallet } from "@/utils/common";
 
-import PageHeader from "@/components/common/page-header";
+
+
 import {
   Card,
   CardContent,
@@ -17,10 +17,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import ProgressIndicator from "@/components/pages/homepage/wallets/new-wallet-flow/shared/ProgressIndicator";
+
 import WalletFlowPageLayout from "@/components/pages/homepage/wallets/new-wallet-flow/shared/WalletFlowPageLayout";
 import { buildMultisigWallet } from "@/utils/common";
-import { DbWalletWithLegacy } from "@/types/wallet";
+import { type DbWalletWithLegacy } from "@/types/wallet";
 
 export default function PageSuccessWallet() {
   const router = useRouter();

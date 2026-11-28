@@ -56,7 +56,7 @@ function utxo(index: number, lovelace: string): UTxO {
       address: WALLET_ADDRESS,
       amount: [{ unit: "lovelace", quantity: lovelace }],
     },
-  } as UTxO;
+  };
 }
 
 function sendDraft(lovelace: string): TxDraft {

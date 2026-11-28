@@ -93,7 +93,7 @@ describe("fetchDRepVoteRows", () => {
   it("gives up after a bounded number of full pages", async () => {
     // A provider that always returns a full page must not loop forever.
     const get = jest.fn<(path: string) => Promise<unknown>>().mockResolvedValue(page(100));
-    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => { /* Intentionally inert test double. */ });
     const rows = await fetchDRepVoteRows(get, "drep1abc");
     expect(get).toHaveBeenCalledTimes(50);
     expect(rows).toHaveLength(5000);

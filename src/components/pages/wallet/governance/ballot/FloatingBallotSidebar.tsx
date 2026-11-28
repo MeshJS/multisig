@@ -50,7 +50,7 @@ export default function FloatingBallotSidebar({
       const next = typeof value === "function" ? value(open) : value;
       onOpenChange(next);
     } else {
-      setUncontrolledOpen(value as boolean);
+      setUncontrolledOpen(value);
     }
   };
 

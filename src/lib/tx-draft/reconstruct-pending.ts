@@ -52,7 +52,8 @@ function supportedTransaction(hex: string, context: PendingEditorContext) {
     throw new Error("Script-invalid transactions cannot be edited.");
   if (
     body.network_id() &&
-    body.network_id()!.kind() !== networkId(context.network)
+    body.network_id()!.kind() !==
+      (context.network === 1 ? csl.NetworkIdKind.Mainnet : csl.NetworkIdKind.Testnet)
   )
     throw new Error("Transaction network differs from the selected network.");
   const unsupported: [unknown, string][] = [

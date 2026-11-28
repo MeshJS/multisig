@@ -80,7 +80,7 @@ export function checkBotStakeAddress(
       message: "stakeAddress must be a bech32 key-based stake address (stake1… / stake_test1…)",
     };
   }
-  const networkId = address.getNetworkId();
+  const networkId: number = address.getNetworkId();
   if (paymentNetworkId !== undefined && networkId !== paymentNetworkId) {
     return {
       ok: false,

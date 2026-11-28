@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import CardUI from "@/components/ui/card-content";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, ArrowRight, Loader, AlertCircle, CheckCircle, SkipForward } from "lucide-react";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { toast } from "@/hooks/use-toast";

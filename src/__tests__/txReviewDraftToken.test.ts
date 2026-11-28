@@ -111,7 +111,7 @@ describe("draft token", () => {
   it("rejects an expired token with a distinct reason", () => {
     const token = jwt.sign(
       { typ: DRAFT_TOKEN_TYPE, sub: SUBJECT, wid: "wallet-1", cid: CLIENT, spec, ph: "00", jti: "j" },
-      process.env.JWT_SECRET as string,
+      process.env.JWT_SECRET!,
       { expiresIn: -10 },
     );
     expect(verifyDraftToken(token, { subject: SUBJECT, clientId: CLIENT })).toEqual({
@@ -146,7 +146,7 @@ describe("draft token", () => {
   it("rejects an unknown card mode as malformed", () => {
     const token = jwt.sign(
       { typ: DRAFT_TOKEN_TYPE, sub: SUBJECT, wid: "wallet-1", cid: CLIENT, spec, ph: "00", jti: "j", card: "pdf" },
-      process.env.JWT_SECRET as string,
+      process.env.JWT_SECRET!,
       { expiresIn: 60 },
     );
     expect(verifyDraftToken(token, { subject: SUBJECT, clientId: CLIENT })).toEqual({
@@ -169,7 +169,7 @@ describe("draft token", () => {
         jti: "j",
         origin: { kind: "tasks", taskIds: [], recipientsHash: "" },
       },
-      process.env.JWT_SECRET as string,
+      process.env.JWT_SECRET!,
       { expiresIn: 60 },
     );
     expect(verifyDraftToken(token, { subject: SUBJECT, clientId: CLIENT })).toEqual({

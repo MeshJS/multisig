@@ -1,4 +1,4 @@
-import React, { useEffect, Component, ReactNode, useMemo, useCallback, useState, useRef } from "react";
+import React, { useEffect, Component, type ReactNode, useMemo, useCallback, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { useAddress } from "@meshsdk/react";
 import { publicRoutes } from "@/data/public-routes";
@@ -14,8 +14,8 @@ import useMultisigWallet from "@/hooks/useMultisigWallet";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { WalletAuthModal } from "@/components/common/modals/WalletAuthModal";
 
-import SessionProvider from "@/components/SessionProvider";
-import { getServerSession } from "next-auth";
+
+
 
 import MenuWallets from "@/components/common/overall-layout/menus/wallets";
 import MenuWallet from "@/components/common/overall-layout/menus/multisig-wallet";
@@ -34,7 +34,7 @@ import { MobileNavigation } from "@/components/ui/mobile-navigation";
 import { MobileActionsMenu } from "@/components/ui/mobile-actions-menu";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+
 
 // The landing page is only the fallback for a signed-out visitor on a private
 // route. A static import put the whole landing page (hero, effects, sections)

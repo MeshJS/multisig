@@ -1,6 +1,6 @@
 import React from "react";
 import CardUI from "@/components/ui/card-content";
-import { BlockfrostDrepInfo } from "@/types/governance";
+import { type BlockfrostDrepInfo } from "@/types/governance";
 
 export default function BaseData({ drepInfo }: { drepInfo: BlockfrostDrepInfo | null }) {
   if (!drepInfo) {

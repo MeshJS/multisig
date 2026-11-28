@@ -10,7 +10,7 @@ import {
 } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
 import { assertWalletAccess } from "@/server/api/auth";
-import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
+import { parseScope, scopeIncludes } from "@/lib/auth/botKey";
 import { assertBotWalletAccess, BotAccessError } from "@/lib/auth/botAccess";
 
 const REQUIRED_SCOPE = "ballot:write";
@@ -69,7 +69,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: "Bot not found" });
     }
     const scopes = parseScope(botUser.botKey.scope);
-    if (!scopeIncludes(scopes, REQUIRED_SCOPE as BotScope)) {
+    if (!scopeIncludes(scopes, REQUIRED_SCOPE)) {
       return res.status(403).json({ error: "Insufficient scope: ballot:write required" });
     }
   } else if (!applyAddressRateLimit(req, res, payload.address)) {

@@ -16,7 +16,7 @@ describe("runPreSignProxyAudit (browser gate before wallet.signTx)", () => {
   });
 
   it("surfaces the server's refusal", async () => {
-    const fetchAudit = jest.fn(async (_input: AuditInput) => ({ error: "nope" as string | null }));
+    const fetchAudit = jest.fn(async (_input: AuditInput) => ({ error: "nope" }));
     await expect(
       runPreSignProxyAudit({ fetchAudit, walletId: "w", txCbor: "aa" }),
     ).resolves.toEqual({ ok: false, message: "nope" });

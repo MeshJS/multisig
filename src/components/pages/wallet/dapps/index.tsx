@@ -51,7 +51,7 @@ function DappCard({ title, description, url }: { title: string; description: str
           <div className="overflow-hidden bg-muted relative w-full h-48">
             {/* Image: show, track load/error */}
             <Image
-              src={ogImage as string}
+              src={ogImage!}
               alt={title}
               fill
               className={`object-cover transition-opacity ${imageLoaded ? "opacity-100" : "opacity-0"}`}

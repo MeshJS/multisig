@@ -43,7 +43,7 @@ export function makeSessionCtx(
     session: {
       user: { id: userAddress },
       expires: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-    } as Session,
+    },
     sessionAddress: userAddress,
     sessionWallets: [],
     primaryWallet: null,

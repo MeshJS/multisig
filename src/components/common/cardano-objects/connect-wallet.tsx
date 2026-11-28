@@ -17,7 +17,7 @@ import useUser from "@/hooks/useUser";
 import { useUserStore } from "@/lib/zustand/user";
 import { getProvider } from "@/utils/get-provider";
 import { fetchUserAssetMetadata } from "@/utils/user-asset-metadata";
-import { Asset } from "@meshsdk/core";
+import { type Asset } from "@meshsdk/core";
 import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";
 import useUTXOS from "@/hooks/useUTXOS";
 import { api } from "@/utils/api";
@@ -207,7 +207,7 @@ function ConnectWalletContent({
   const hasAttemptedAutoConnect = useRef(false);
   
   const network = useSiteStore((state) => state.network);
-  const netId = (network === 1 ? 1 : 0) as 0 | 1;
+  const netId = (network === 1 ? 1 : 0);
   const connected = String(state) === String(WalletState.CONNECTED);
 
   // Check if any Sheet/Dialog is open to prevent dropdown from opening
@@ -327,7 +327,7 @@ function ConnectWalletContent({
       }
     }
     handleAutoUtxosEnable();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [pastUtxosEnabled, isUtxosEnabled, isUtxosLoading, setPastUtxosEnabled, enableUtxos]);
 
   // Auto-connect using MeshJS persistence  
@@ -503,7 +503,7 @@ function ConnectWalletContent({
           if (typeof utxosWallet.cardano.getDRep === 'function') {
             const dRepKey = await utxosWallet.cardano.getDRep();
             if (dRepKey && typeof dRepKey === 'object' && 'publicKeyHash' in dRepKey) {
-              drepKeyHash = dRepKey.publicKeyHash as string;
+              drepKeyHash = dRepKey.publicKeyHash;
             }
           }
         } catch (error) {
@@ -986,7 +986,7 @@ function ConnectWalletContent({
                   value={netId === 1 ? "mainnet" : "testnet"}
                   onValueChange={(value) => {
                     if (!value) return;
-                    const next = (value === "mainnet" ? 1 : 0) as 0 | 1;
+                    const next = (value === "mainnet" ? 1 : 0);
                     if (next === netId) return;
 
                     if (isUtxosEnabled) {

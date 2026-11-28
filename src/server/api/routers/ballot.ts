@@ -112,7 +112,7 @@ export const ballotRouter = createTRPCRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Ballot not found" });
       }
       await assertWalletAccess(ctx, ballot.walletId);
-      const existingAligned = alignBallotArrays(ballot as any);
+      const existingAligned = alignBallotArrays(ballot);
       const aligned = alignBallotArrays(
         {
           items: input.items,
@@ -196,7 +196,7 @@ export const ballotRouter = createTRPCRouter({
       if (Array.isArray(ballot.items) && ballot.items.includes(input.item)) {
         throw new Error("Proposal already exists in this ballot");
       }
-      const aligned = alignBallotArrays(ballot as any);
+      const aligned = alignBallotArrays(ballot);
       const updatedItems = [...aligned.items, input.item];
       const updatedItemDescriptions = [...aligned.itemDescriptions, input.itemDescription];
       const updatedChoices = [
@@ -238,7 +238,7 @@ export const ballotRouter = createTRPCRouter({
       }
       await assertWalletAccess(ctx, ballot.walletId);
       // Remove the item at the given index from all arrays
-      const aligned = alignBallotArrays(ballot as any);
+      const aligned = alignBallotArrays(ballot);
       const updatedItems = aligned.items.filter((_, i) => i !== input.index);
       const updatedItemDescriptions = aligned.itemDescriptions.filter((_, i) => i !== input.index);
       const updatedChoices = aligned.choices.filter((_, i) => i !== input.index);
@@ -271,7 +271,7 @@ export const ballotRouter = createTRPCRouter({
         where: { id: input.ballotId },
       });
       if (!ballot) throw new Error("Ballot not found");
-      const aligned = alignBallotArrays(ballot as any);
+      const aligned = alignBallotArrays(ballot);
       if (!Array.isArray(aligned.choices) || aligned.choices.length <= input.index)
         throw new Error("Invalid choice index");
       await assertWalletAccess(ctx, ballot.walletId);
@@ -303,7 +303,7 @@ export const ballotRouter = createTRPCRouter({
         where: { id: input.ballotId },
       });
       if (!ballot) throw new Error("Ballot not found");
-      const aligned = alignBallotArrays(ballot as any);
+      const aligned = alignBallotArrays(ballot);
       if (!Array.isArray(aligned.items) || aligned.items.length <= input.index)
         throw new Error("Invalid proposal index");
       await assertWalletAccess(ctx, ballot.walletId);
@@ -338,7 +338,7 @@ export const ballotRouter = createTRPCRouter({
         where: { id: input.ballotId },
       });
       if (!ballot) throw new Error("Ballot not found");
-      const aligned = alignBallotArrays(ballot as any);
+      const aligned = alignBallotArrays(ballot);
       if (!Array.isArray(aligned.items) || aligned.items.length <= input.index) {
         throw new Error("Invalid proposal index");
       }

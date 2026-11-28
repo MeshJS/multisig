@@ -3,8 +3,8 @@ import Button from "@/components/common/button";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
 import useTransaction from "@/hooks/useTransaction";
-import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
-import { Wallet } from "@/types/wallet";
+import { keepRelevant, type Quantity, type Unit, type UTxO } from "@meshsdk/core";
+import { type Wallet } from "@/types/wallet";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { useToast } from "@/hooks/use-toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -22,17 +22,11 @@ import {
 import { ProxyModeNotice } from "@/components/multisig/proxy/ProxyModeNotice";
 import useMeshWallet from "@/hooks/useMeshWallet";
 import { useUserStore } from "@/lib/zustand/user";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+
 import type { BallotType } from "../ballot/ballot";
 import { useBallotModal } from "@/hooks/useBallotModal";
-import { Plus, Lock, FileText, CheckCircle2, XCircle, MinusCircle, Vote } from "lucide-react";
-import { ProposalDetails } from "@/types/governance";
+import { Lock, CheckCircle2, XCircle, MinusCircle, Vote } from "lucide-react";
+import { type ProposalDetails } from "@/types/governance";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { getProposalStatus, parseProposalId } from "@/lib/governance";
 

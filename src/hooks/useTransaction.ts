@@ -3,7 +3,7 @@ import { useToast } from "./use-toast";
 import { useCallback } from "react";
 import { useSiteStore } from "@/lib/zustand/site";
 import useAppWallet from "./useAppWallet";
-import { MeshTxBuilder } from "@meshsdk/core";
+import { type MeshTxBuilder } from "@meshsdk/core";
 import useActiveWallet from "./useActiveWallet";
 import {
   filterWitnessesToScripts,

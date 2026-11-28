@@ -1,12 +1,12 @@
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { TRPCError } from "@trpc/server";
-import { NextApiRequest, NextApiResponse } from "next";
-import { Wallet as DbWallet } from "@prisma/client";
+import { type NextApiRequest, type NextApiResponse } from "next";
+import { type Wallet as DbWallet } from "@prisma/client";
 import { buildMultisigWallet } from "@/utils/common";
 import { verifyJwt } from "@/lib/verifyJwt";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
-import { DbWalletWithLegacy } from "@/types/wallet";
+import { type DbWalletWithLegacy } from "@/types/wallet";
 import { applyRateLimit } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
 import {

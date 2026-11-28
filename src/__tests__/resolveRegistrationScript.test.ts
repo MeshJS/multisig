@@ -134,6 +134,7 @@ describe("resolveRegistrationScript API", () => {
       if (path === `/txs/${txHash}/utxos`) {
         return { inputs: [], outputs: [{ address: scriptAddress }] };
       }
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
       throw {
         response: { data: { error: "Not Found", status_code: 404 } },
       };

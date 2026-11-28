@@ -376,7 +376,7 @@ export function recoverRoleKeySets(args: {
       stakeRestored && stakePairedByName
         ? sigHashes.map((hash, i) =>
             perSlotStake![i]
-              ? keyHashesToBaseAddress(hash, perSlotStake![i]!, networkId)
+              ? keyHashesToBaseAddress(hash, perSlotStake![i], networkId)
               : "",
           )
         : empty(),

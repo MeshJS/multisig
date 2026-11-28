@@ -394,7 +394,7 @@ describe("txJsonToDraft", () => {
               { unit: "policy1token", quantity: "9" },
             ],
           },
-        } as any,
+        },
       ],
     });
     (txBuilder as any).queueAllLastItem();
@@ -663,7 +663,7 @@ describe("staking certificate transactions", () => {
             address: WALLET_ADDRESS,
             amount: [{ unit: "lovelace", quantity: "10000000" }],
           },
-        } as any,
+        },
       ],
       stakeRewardAddress: STAKE_ADDRESS,
       stakeScriptCbor: "8201828200581c11",

@@ -5,7 +5,7 @@ import {
   type Protocol,
   type UTxO,
 } from "@meshsdk/core";
-import { Address } from "@meshsdk/core-cst";
+import { Address, NetworkId } from "@meshsdk/core-cst";
 import { csl } from "@meshsdk/core-csl";
 import type { DraftUtxoRef, TxDraft } from "@/types/tx-draft";
 import { utxoRefKey, type ScriptInputProvider } from "./resolve-script-inputs";
@@ -29,7 +29,8 @@ export function inspectCollateral(
   const parsed = deserializeAddress(address);
   if (
     !address.startsWith("addr") ||
-    Address.fromBech32(address).getNetworkId() !== (network === 1 ? 1 : 0)
+    Address.fromBech32(address).getNetworkId() !==
+      (network === 1 ? NetworkId.Mainnet : NetworkId.Testnet)
   )
     throw new Error("Collateral must be on the selected network.");
   if (!parsed.pubKeyHash || parsed.scriptHash)

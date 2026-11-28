@@ -51,8 +51,10 @@ export const blockfrostGet = async <T,>(network: string, path: string): Promise<
     : null;
 
   if (!response.ok) {
+    // eslint-disable-next-line @typescript-eslint/only-throw-error -- Preserve the Mesh-compatible rejection payload consumed by provider error/status handlers.
     throw {
       status: response.status,
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Preserve the provider's fallback message coercion for non-object response bodies.
       data: typeof body === "object" && body !== null ? body : { message: String(body ?? "") },
     };
   }

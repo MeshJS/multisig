@@ -1,4 +1,4 @@
-import type { UTxO } from "@meshsdk/core";
+
 
 import {
   addOutput,
@@ -122,7 +122,7 @@ describe("draftToTokenFlow with a built overlay", () => {
         {
           input: { txHash: "a".repeat(64), outputIndex: 9 },
           output: { address: SELF, amount: lovelace("9000000") },
-        } as UTxO,
+        },
       ],
     });
     const flow = draftToTokenFlow(draft, { ...OPTS, built: builtBody() });

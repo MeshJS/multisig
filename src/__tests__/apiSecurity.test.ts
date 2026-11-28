@@ -104,7 +104,7 @@ describe("wallet router authorization", () => {
 
     const caller = createCaller({
       db: baseDb as any,
-      session: { user: { id: "addr1" }, expires: new Date().toISOString() } as any,
+      session: { user: { id: "addr1" }, expires: new Date().toISOString() },
       sessionAddress: "addr1",
       sessionWallets: [],
       primaryWallet: null,
@@ -139,7 +139,7 @@ describe("wallet router authorization", () => {
 
     const caller = createCaller({
       db: baseDb as any,
-      session: { user: { id: "addr1" }, expires: new Date().toISOString() } as any,
+      session: { user: { id: "addr1" }, expires: new Date().toISOString() },
       sessionAddress: "addr1",
       sessionWallets: [],
       primaryWallet: null,

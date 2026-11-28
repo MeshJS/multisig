@@ -53,7 +53,7 @@ function recoveryWallet(overrides: Partial<ScriptRecoveryWallet> = {}): ScriptRe
     scriptCbor: scriptA.scriptCbor,
     address: scriptA.address,
     ...overrides,
-  } as ScriptRecoveryWallet;
+  };
 }
 
 function buildMinimalTxHex(): string {
@@ -295,7 +295,7 @@ describe("submitTxWithScriptRecovery", () => {
     const missingError = new Error(
       `MissingScriptWitnessesUTXOW (fromList [ScriptHash "${hashA}"])`,
     );
-    let submitted: string[] = [];
+    const submitted: string[] = [];
     const submitter = submitterOf(async (hex) => {
       submitted.push(hex);
       if (submitted.length === 1) throw missingError;

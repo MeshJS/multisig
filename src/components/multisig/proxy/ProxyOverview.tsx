@@ -1,6 +1,6 @@
-import React, { memo, useState, useEffect } from "react";
+import React, { memo } from "react";
 import { truncateTokenSymbol } from "@/utils/strings";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

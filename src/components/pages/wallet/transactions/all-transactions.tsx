@@ -11,13 +11,13 @@ import { ArrowUpRight, MoreHorizontal, Award, UserMinus, UserPlus, UserCog, Arro
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/common/empty-state";
 import LinkCardanoscan from "@/components/common/link-cardanoscan";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import useAllTransactions from "@/hooks/useAllTransactions";
 import { dateToFormatted, getFirstAndLast, lovelaceToAda, truncateTokenSymbol } from "@/utils/strings";
 import CardUI from "@/components/ui/card-content";
-import { OnChainTransaction } from "@/types/transaction";
+import { type OnChainTransaction } from "@/types/transaction";
 import { useWalletsStore } from "@/lib/zustand/wallets";
-import { Transaction } from "@prisma/client";
+import { type Transaction } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -447,7 +447,7 @@ function RowAction({
     if (allTxInputsFromSameAddress) {
       const txBuilder = await getTxBuilder(network);
 
-      const _amount: { [unit: string]: number } = {};
+      const _amount: Record<string, number> = {};
 
       for (const output of transaction.outputs) {
         if (output.address === appWallet.address) {

@@ -1,4 +1,4 @@
-import { ChangeEvent, useRef } from "react";
+
 import Papa from "papaparse";
 import { useDropzone } from "react-dropzone";
 import { Download } from "lucide-react";
@@ -30,7 +30,7 @@ export default function RecipientCsv({
 
     Papa.parse<string[]>(file, {
       complete: (results: Papa.ParseResult<string[]>) => {
-        const rows = results.data as string[][];
+        const rows = results.data;
         const newAddresses: string[] = [];
         const newAmounts: string[] = [];
         const newAssets: string[] = [];

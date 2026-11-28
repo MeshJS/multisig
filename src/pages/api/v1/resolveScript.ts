@@ -14,7 +14,7 @@ export type ResolveScriptResponse = {
   /** Stake credential of the queried address (null when queried by hash). */
   stakeCredentialHash: string | null;
   /** Provider timelock JSON, or null when unknown / not a native script. */
-  scriptJson: unknown | null;
+  scriptJson: unknown;
   /** Sig key hashes in script order (empty when unresolved or non-timelock). */
   sigHashes: string[];
 };

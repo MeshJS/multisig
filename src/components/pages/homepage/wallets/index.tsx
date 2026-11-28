@@ -4,13 +4,13 @@ import Link from "next/link";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import useUserWallets from "@/hooks/useUserWallets";
 import useWalletBalances from "@/hooks/useWalletBalances";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { getFirstAndLast } from "@/utils/strings";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
-import { buildMultisigWallet, getWalletType } from "@/utils/common";
-import { addressToNetwork } from "@/utils/multisigSDK";
+import { getWalletType } from "@/utils/common";
+
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -138,9 +138,7 @@ export default function PageWallets() {
   // on unrelated rerenders.
   const walletsForBalance = useMemo(
     () =>
-      wallets?.filter((wallet) => showArchived || !wallet.isArchived) as
-      | Wallet[]
-      | undefined,
+      wallets?.filter((wallet) => showArchived || !wallet.isArchived),
     [wallets, showArchived],
   );
 
@@ -199,7 +197,7 @@ export default function PageWallets() {
                 return (
                   <CardWallet
                     key={wallet.id}
-                    wallet={wallet as Wallet}
+                    wallet={wallet}
                     balance={walletBalance}
                     loadingState={walletLoadingState}
                   />

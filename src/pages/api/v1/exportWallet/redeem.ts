@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createHash } from "crypto";
 import { db } from "@/server/db";
-import { checkSignature, DataSignature } from "@meshsdk/core";
+import { checkSignature, type DataSignature } from "@meshsdk/core";
 import { publicCors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
 import { normalizeAddressToBech32 } from "@/utils/addressCompatibility";

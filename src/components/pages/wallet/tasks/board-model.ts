@@ -1,6 +1,6 @@
 import { baseToDisplay } from "@/lib/tx-draft/decimal";
 
-import { COLUMNS, type BoardTask, type TaskStatus } from "./types";
+import { type BoardTask, type TaskStatus } from "./types";
 
 /**
  * Pure helpers behind the board: grouping tasks into columns, applying a

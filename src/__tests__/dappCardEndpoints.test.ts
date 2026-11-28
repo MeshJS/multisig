@@ -29,7 +29,7 @@ const realFetch = global.fetch;
 
 beforeEach(() => {
   fetchMock.mockReset();
-  global.fetch = fetchMock as unknown as typeof fetch;
+  global.fetch = fetchMock;
 });
 
 afterEach(() => {
@@ -167,6 +167,7 @@ describe("cappedFetch", () => {
     // Headers arrive at once; the body never finishes. The abort signal must
     // still fire, as it does for undici, which errors the body stream.
     fetchMock.mockImplementation(async (_url, init) => {
+      // eslint-disable-next-line @typescript-eslint/non-nullable-type-assertion-style -- Preserve optional access while asserting the signal provided by this fixture.
       const signal = init?.signal as AbortSignal;
       const body = new ReadableStream<Uint8Array>({
         start(controller) {

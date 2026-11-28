@@ -39,7 +39,7 @@ describe("resolveDRepAnchorFromUrl", () => {
 
     const r = await resolveDRepAnchorFromUrl("https://example.test/drep.json");
     expect(r.anchorUrl).toBe("https://example.test/drep.json");
-    expect(r.anchorDataHash).toBe(hashDrepAnchor(doc as object));
+    expect(r.anchorDataHash).toBe(hashDrepAnchor(doc));
   });
 
   it("rejects when optional anchorDataHash mismatches", async () => {

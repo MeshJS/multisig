@@ -23,7 +23,7 @@ const mkUtxo = (amount: UTxO["output"]["amount"]): UTxO =>
   ({
     input: { txHash: "aa", outputIndex: 0 },
     output: { address: "addr_test_wallet", amount },
-  }) as UTxO;
+  });
 
 function createDb() {
   return {

@@ -83,6 +83,7 @@ describe("fetchStakeAccountStatus", () => {
     // stake account surfaced as a lookup failure (a 500 from stakeAccountInfo,
     // a 502 STAKE_LOOKUP_FAILED from the MCP draft pipeline).
     const p = provider(async () => {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
       throw MESH_404;
     });
     await expect(fetchStakeAccountStatus(p, "stake_test1uqx")).resolves.toEqual({
@@ -93,6 +94,7 @@ describe("fetchStakeAccountStatus", () => {
 
   it("rethrows Mesh's string rejection for any other status", async () => {
     const p = provider(async () => {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
       throw MESH_500;
     });
     await expect(fetchStakeAccountStatus(p, "stake_test1uqx")).rejects.toBe(MESH_500);

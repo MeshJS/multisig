@@ -25,8 +25,8 @@ type MockRes = {
 function mockRes(): MockRes {
   const res = {
     statusCode: 200,
-    headers: {} as Record<string, string>,
-    body: undefined as unknown,
+    headers: {},
+    body: undefined,
   } as MockRes;
   res.status = jest.fn((code: number) => {
     res.statusCode = code;
@@ -70,6 +70,7 @@ async function call(
 function mockFetch(impl: (url: string, init: RequestInit) => Promise<Response>) {
   return jest
     .spyOn(globalThis, "fetch")
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Inspect the exact string coercion of the fetch argument supplied by this test.
     .mockImplementation((input, init) => impl(String(input), init ?? {}));
 }
 
@@ -114,6 +115,7 @@ describe("GET /api/ipfs/resolve", () => {
     // Shared via the CDN, so no per-caller quota headers on it.
     expect(res.headers["x-ratelimit-remaining"]).toBeUndefined();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Inspect the exact string coercion of the fetch argument supplied by this test.
     expect(String(fetchSpy.mock.calls[0]![0])).toBe(
       `https://gateway.pinata.cloud/ipfs/${CID}`,
     );
@@ -228,6 +230,7 @@ describe("GET /api/ipfs/resolve", () => {
 
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(String(res.body))).toEqual({ from: "second" });
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Inspect the exact string coercion of the fetch argument supplied by this test.
     const urls = fetchSpy.mock.calls.map((c) => String(c[0]));
     expect(urls.some((u) => u.includes("169.254.169.254"))).toBe(false);
   });

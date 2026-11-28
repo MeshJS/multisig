@@ -1,6 +1,6 @@
 import { buildWallet } from "../utils/common";
-import { Wallet as DbWallet } from "@prisma/client";
-import { RawImportBodies } from "../types/wallet";
+import { type Wallet as DbWallet } from "@prisma/client";
+import { type RawImportBodies } from "../types/wallet";
 
 describe("Summon Wallet Capabilities", () => {
     const network = 0; // Testnet

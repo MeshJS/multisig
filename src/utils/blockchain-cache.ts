@@ -5,7 +5,7 @@
  * Uses Next.js cache() and unstable_cache() for server-side caching.
  */
 
-import { cache } from "react";
+
 import { unstable_cache } from "next/cache";
 import type { BlockfrostProvider } from "@meshsdk/core";
 

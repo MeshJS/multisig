@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import { createHash, randomBytes } from "crypto";
+import jwt from "jsonwebtoken";
 
 import {
   isValidCodeChallenge,
@@ -188,20 +189,18 @@ describe("access tokens", () => {
     });
 
     it("does not accept a v1 human JWT", () => {
-      const jwt = require("jsonwebtoken") as typeof import("jsonwebtoken");
       const v1Token = jwt.sign(
         { address: "addr_test1qpuser" },
-        process.env.JWT_SECRET as string,
+        process.env.JWT_SECRET!,
         { expiresIn: "1h" },
       );
       expect(verifyAccessToken(v1Token, { issuer: ISSUER, resource: RESOURCE })).toBeNull();
     });
 
     it("does not accept a v1 bot JWT", () => {
-      const jwt = require("jsonwebtoken") as typeof import("jsonwebtoken");
       const botToken = jwt.sign(
         { address: "addr_test1qpbot", botId: "bot-1", type: "bot" },
-        process.env.JWT_SECRET as string,
+        process.env.JWT_SECRET!,
         { expiresIn: "1h" },
       );
       expect(verifyAccessToken(botToken, { issuer: ISSUER, resource: RESOURCE })).toBeNull();

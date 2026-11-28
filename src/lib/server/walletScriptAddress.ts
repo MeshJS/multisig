@@ -2,7 +2,7 @@ import type { Wallet as DbWallet } from "@prisma/client";
 import { buildMultisigWallet } from "@/utils/common";
 import { addressToNetwork } from "@/utils/multisigSDK";
 import { serializeNativeScript } from "@meshsdk/core";
-import { DbWalletWithLegacy } from "@/types/wallet";
+import { type DbWalletWithLegacy } from "@/types/wallet";
 import {
   decodeNativeScriptFromCbor,
   decodedToNativeScript,
