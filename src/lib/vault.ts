@@ -81,7 +81,7 @@ export function splitFrontmatter(raw: string): {
     if (!line.trim() || line.trim().startsWith("#")) continue;
 
     // Block-list item belonging to the previous key: "  - value"
-    const listItem = line.match(/^\s+-\s+(.*)$/);
+    const listItem = /^\s+-\s+(.*)$/.exec(line);
     if (listItem && currentKey) {
       const existing = frontmatter[currentKey];
       const next = Array.isArray(existing) ? existing : [];
@@ -90,7 +90,7 @@ export function splitFrontmatter(raw: string): {
       continue;
     }
 
-    const pair = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    const pair = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
     if (!pair) continue;
 
     const key = pair[1] ?? "";

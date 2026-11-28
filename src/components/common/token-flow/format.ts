@@ -1,15 +1,13 @@
 import type { AssetQuantity } from "@/types/token-flow";
 import { numberWithCommas, truncateTokenSymbol } from "@/utils/strings";
 
-export type AssetMetadataMap = {
-  [unit: string]: {
+export type AssetMetadataMap = Record<string, {
     assetName: string;
     decimals: number;
     image: string;
     ticker: string;
     policyId: string;
-  };
-};
+  }>;
 
 function roundedQuantity(rawQuantity: string, decimals: number): string {
   const quantity = Number(rawQuantity) / Math.pow(10, decimals);

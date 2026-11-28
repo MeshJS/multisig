@@ -146,7 +146,7 @@ export default function CborTab({ flow }: Props) {
             } as const)
           : ({ type: decoded.type, scripts: sigScripts } as const);
       const reconstructedHash = resolveNativeScriptHash(
-        decodedToNativeScript(reconstructed as never),
+        decodedToNativeScript(reconstructed),
       ).toLowerCase();
       if (decoded.hash && reconstructedHash !== decoded.hash.toLowerCase()) {
         toast({

@@ -115,7 +115,7 @@ function setNativeScriptWitnesses(txHex: string, scriptCbors: string[]): string 
   const tx = Transaction.fromCbor(TxCBOR(txHex));
   const witnesses = tx.witnessSet();
   const scripts = dedupeScriptSetByHash(scriptCbors).map((hex) => CstNativeScript.fromCbor(HexBlob(deserializeNativeScript(hex).to_hex())));
-  witnesses.setNativeScripts(CborSet.fromCore(scripts.map((script) => script.toCore()), CstNativeScript.fromCore));
+  witnesses.setNativeScripts(CborSet.fromCore(scripts.map((script) => script.toCore()), (script) => CstNativeScript.fromCore(script)));
   tx.setWitnessSet(witnesses);
   return tx.toCbor();
 }
@@ -133,9 +133,7 @@ function extractScriptHashesFromFailureList(
   if (markerIndex < 0) return [];
 
   const tail = message.slice(markerIndex);
-  const listMatch = tail.match(
-    new RegExp(`${failureType}\\s*\\(fromList\\s*\\[([^\\]]*)\\]\\)`),
-  );
+  const listMatch = new RegExp(`${failureType}\\s*\\(fromList\\s*\\[([^\\]]*)\\]\\)`).exec(tail);
   if (!listMatch?.[1]) return [];
 
   const hashes = listMatch[1].match(/[0-9a-fA-F]{56}/g) || [];
@@ -149,7 +147,7 @@ function extractMissingScriptHashesFromError(error: unknown): string[] {
     return hashes;
   }
 
-  const fallbackMatch = message.match(/([0-9a-fA-F]{56})/);
+  const fallbackMatch = /([0-9a-fA-F]{56})/.exec(message);
   return fallbackMatch?.[1] ? [fallbackMatch[1].toLowerCase()] : [];
 }
 
@@ -196,7 +194,7 @@ function removeVKeyWitnessesByPublicKey(
   const witnessSet = tx.witnessSet();
   const existingVkeys = witnessSet.vkeys();
   if (!existingVkeys) return txHex;
-  witnessSet.setVkeys(CborSet.fromCore([...existingVkeys.values()].map((witness) => witness.toCore()).filter(([pub]) => !publicKeysToRemove.has(String(pub).toLowerCase())), VkeyWitness.fromCore));
+  witnessSet.setVkeys(CborSet.fromCore([...existingVkeys.values()].map((witness) => witness.toCore()).filter(([pub]) => !publicKeysToRemove.has(String(pub).toLowerCase())), (witness) => VkeyWitness.fromCore(witness)));
   tx.setWitnessSet(witnessSet);
   return tx.toCbor();
 }

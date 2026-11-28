@@ -123,6 +123,7 @@ const notify = (overrides: Record<string, unknown> = {}) =>
 const sentContents = () =>
   fetchMock.mock.calls
     .filter(([url]) => String(url).endsWith("/messages"))
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Inspect the exact string coercion of the fetch argument supplied by this test.
     .map(([, init]) => JSON.parse(String((init as RequestInit | undefined)?.body)).content as string);
 
 describe("POST /api/discord/send-message", () => {

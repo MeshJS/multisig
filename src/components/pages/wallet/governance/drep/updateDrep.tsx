@@ -4,7 +4,7 @@ import useAppWallet from "@/hooks/useAppWallet";
 import useActiveWallet from "@/hooks/useActiveWallet";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { getDRepIds } from "@meshsdk/core-cst";
+
 import useTransaction from "@/hooks/useTransaction";
 import DRepForm from "./drepForm";
 import { getDRepMetadata } from "./drepMetadata";
@@ -18,7 +18,7 @@ import { ProxyModeNotice } from "@/components/multisig/proxy/ProxyModeNotice";
 import { proxyModeBlockedMessage, resolveProxyMode } from "@/lib/proxy/proxyMode";
 import { api } from "@/utils/api";
 import { useToast } from "@/hooks/use-toast";
-import { getProvider } from "@/utils/get-provider";
+
 import { applyDRepCert } from "@/lib/tx-builders/buildDRepCertTx";
 
 interface PutResponse {
@@ -207,7 +207,7 @@ export default function UpdateDRep({ onClose }: UpdateDRepProps = {}) {
       if (!multisigScriptCbor && !appScriptCbor) {
         throw new Error("Script CBOR not found");
       }
-      scriptCbor = multisigWallet.getKeysByRole(3) ? (multisigScriptCbor || appScriptCbor!) : (appScriptCbor || multisigScriptCbor!);
+      scriptCbor = multisigWallet.getKeysByRole(3) ? (multisigScriptCbor || appScriptCbor) : (appScriptCbor || multisigScriptCbor!);
       changeAddress = multisigScript.address;
     } else {
       // Legacy wallet: use appWallet values (computed with input order preserved)

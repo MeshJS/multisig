@@ -558,6 +558,7 @@ export const transactionRouter = createTRPCRouter({
                 } else if ("to_string" in coinValue && typeof (coinValue as any).to_string === "function") {
                   coinStr = (coinValue as any).to_string();
                 } else {
+                  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Preserve the legacy SDK value's string fallback when neither numeric conversion method exists.
                   coinStr = String(coinValue);
                 }
               } else {
@@ -607,6 +608,7 @@ export const transactionRouter = createTRPCRouter({
                             } else if ("to_string" in quantityValue && typeof (quantityValue as any).to_string === "function") {
                               quantityStr = (quantityValue as any).to_string();
                             } else {
+                              // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Preserve the legacy SDK value's string fallback when neither numeric conversion method exists.
                               quantityStr = String(quantityValue);
                             }
                           } else {
@@ -655,6 +657,7 @@ export const transactionRouter = createTRPCRouter({
           } else if ("to_string" in feeValue && typeof (feeValue as any).to_string === "function") {
             feeStr = (feeValue as any).to_string();
           } else {
+            // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Preserve the legacy SDK value's string fallback when neither numeric conversion method exists.
             feeStr = String(feeValue);
           }
         } else {

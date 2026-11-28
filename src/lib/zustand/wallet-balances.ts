@@ -10,7 +10,7 @@ interface WalletBalanceCache {
 
 interface State {
   // Cache balances by wallet ID
-  balances: { [walletId: string]: WalletBalanceCache };
+  balances: Record<string, WalletBalanceCache>;
   
   // Set balance for a wallet
   setBalance: (walletId: string, balance: number | null, address: string) => void;

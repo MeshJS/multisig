@@ -27,8 +27,9 @@ jest.mock("@/lib/auth/walletSession", () => ({
   getWalletSessionFromReq: sessionMock,
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+
 const { default: handler, parseIssueReport, MAX_TITLE_LENGTH, MAX_BODY_LENGTH } =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Load the route after its CommonJS test mocks have been installed.
   require("@/pages/api/github/create-issue") as typeof import("@/pages/api/github/create-issue");
 
 type Captured = NextApiResponse & { _status: number; _json: any; _headers: Record<string, string> };

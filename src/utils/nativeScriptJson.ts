@@ -48,6 +48,7 @@ export function providerScriptJsonToNativeScript(json: unknown): NativeScript {
     if (node.slot === undefined || node.slot === null) {
       throw new Error(`Invalid ${type} script: missing slot`);
     }
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Preserve provider slot coercion; tightening accepted JSON belongs in a separate validation change.
     return { type, slot: String(node.slot) };
   }
   throw new Error(`Unsupported native script type: ${String(type)}`);

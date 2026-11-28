@@ -73,7 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   
   // At this point, url is guaranteed to be a string
-  const validatedUrl = url as string;
+  const validatedUrl = url!;
   
   if (!isAllowedDomain(validatedUrl)) {
     return res.status(400).json({ error: "Domain not allowed" });

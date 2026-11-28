@@ -7,7 +7,7 @@ import {
   publicProcedure,
 } from "@/server/api/trpc";
 import type { AuthCtx } from "@/server/api/trpc";
-import type { RawImportBodies } from "@/types/wallet";
+
 import { Prisma } from "@prisma/client";
 import { audit } from "@/lib/observability/audit";
 import { paymentKeyHash, stakeKeyHash } from "@/utils/multisigSDK";

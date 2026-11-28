@@ -14,7 +14,7 @@
  */
 
 import {
-  NativeScript,
+  type NativeScript,
   resolveNativeScriptHash,
   resolvePaymentKeyHash,
   resolveScriptHashDRepId,
@@ -22,7 +22,7 @@ import {
   serializeNativeScript,
   serializeRewardAddress,
 } from "@meshsdk/core";
-import { DRepID, getDRepIds } from "@meshsdk/core-cst";
+import { getDRepIds } from "@meshsdk/core-cst";
 
 /**
  * Extracts the payment key hash from a Cardano address.

@@ -5,7 +5,7 @@ import { buildWallet } from "@/utils/common";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useRouter } from "next/router";
 import { useWalletsStore } from "@/lib/zustand/wallets";
-import { DbWalletWithLegacy, Wallet } from "@/types/wallet";
+import { type DbWalletWithLegacy } from "@/types/wallet";
 
 export default function useAppWallet() {
   const router = useRouter();

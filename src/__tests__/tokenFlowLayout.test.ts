@@ -334,8 +334,8 @@ describe("layoutTokenFlow — explorer-style instance splitting", () => {
     const isKnown = (id: string) =>
       protocolHandles.has(id) || /^(in|out|proto)-\d+$/.test(id);
     for (const edge of result.edges) {
-      expect(isKnown(edge.sourceHandle as string)).toBe(true);
-      expect(isKnown(edge.targetHandle as string)).toBe(true);
+      expect(isKnown(edge.sourceHandle!)).toBe(true);
+      expect(isKnown(edge.targetHandle!)).toBe(true);
     }
   });
 

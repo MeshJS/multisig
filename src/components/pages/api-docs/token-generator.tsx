@@ -83,10 +83,7 @@ export default function TokenGenerator({
       // Step 2: Sign the nonce
       let signature: { signature: string; key: string } | undefined;
       try {
-        signature = (await wallet.signData(nonce, address)) as {
-          signature: string;
-          key: string;
-        };
+        signature = (await wallet.signData(nonce, address));
       } catch (error) {
         // User declined to sign or signing was cancelled
         if (error instanceof Error) {
@@ -162,6 +159,7 @@ export default function TokenGenerator({
             ) as HTMLInputElement | null;
             if (tokenInput) {
               // Set value through the native setter so React sees the change
+              // eslint-disable-next-line @typescript-eslint/unbound-method -- The native setter is invoked below with .call(tokenInput, token), preserving its receiver.
               const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
                 window.HTMLInputElement.prototype,
                 "value",

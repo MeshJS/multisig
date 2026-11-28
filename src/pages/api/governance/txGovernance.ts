@@ -87,6 +87,7 @@ export default async function handler(
       error: `txHashes must be an array of up to ${MAX_TX_HASHES} tx hashes`,
     });
   }
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Preserve query/body coercion before the existing network allowlist check.
   const base = KOIOS_BASES[String(network ?? "")];
   if (!base) {
     return res.status(400).json({ error: "network must be 0 or 1" });

@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { useSiteStore } from "@/lib/zustand/site";
 import { getProvider } from "@/utils/get-provider";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { keepRelevant, Quantity, Unit, UTxO } from "@meshsdk/core";
+import { keepRelevant, type Quantity, type Unit, type UTxO } from "@meshsdk/core";
 import { useUserStore } from "@/lib/zustand/user";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import useTransaction from "@/hooks/useTransaction";
@@ -214,7 +214,7 @@ export default function Retire({ appWallet, manualUtxos }: { appWallet: Wallet; 
           });
           return;
         }
-        scriptCbor = multisigWallet.getKeysByRole(3) ? (multisigScriptCbor || appScriptCbor!) : (appScriptCbor || multisigScriptCbor!);
+        scriptCbor = multisigWallet.getKeysByRole(3) ? (multisigScriptCbor || appScriptCbor) : (appScriptCbor || multisigScriptCbor!);
         changeAddress = multisigScript.address;
       } else {
         // Legacy wallet: use appWallet values (computed with input order preserved)

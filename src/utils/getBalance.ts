@@ -1,5 +1,5 @@
 
-import { UTxO } from "@meshsdk/core";
+import { type UTxO } from "@meshsdk/core";
 
 type BalanceMap = Record<string, string>;
 
@@ -25,7 +25,7 @@ export function getBalance(utxos: UTxO[] = []): BalanceMap {
         }
         return acc;
       },
-      {} as { [key: string]: number },
+      {} as Record<string, number>,
     );
 
   const balance = Object.fromEntries(

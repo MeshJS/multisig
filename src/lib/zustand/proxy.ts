@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { zustandStorage } from "../indexeddb";
 import { MeshProxyContract } from "@/components/multisig/proxy/offchain";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { useSiteStore } from "./site";
+
 
 // Types for proxy data
 export interface ProxyDrepInfo {

@@ -29,10 +29,10 @@ import {
   DRepPreview,
   StakingPreview,
 } from "@/components/pages/homepage/previews";
-import { MCP_TOOL_SUMMARIES } from "@/data/mcp-tools";
+
 // Import-free module: the scope catalogue is safe in a client bundle, unlike
 // the tool registry it describes.
-import { MCP_SCOPES } from "@/lib/mcp/scopes";
+
 import { SITE_URL } from "@/lib/seo";
 
 /**
@@ -101,7 +101,7 @@ function DappCard({ title, description, url }: { title: string; description: str
         {shouldShowImageArea ? (
           <div className="overflow-hidden bg-muted relative w-full h-48">
             <Image
-              src={ogImage as string}
+              src={ogImage!}
               alt={title}
               fill
               className={`object-cover transition-opacity ${imageLoaded ? "opacity-100" : "opacity-0"}`}

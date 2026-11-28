@@ -70,7 +70,7 @@ function createWallet(overrides?: Partial<MockWallet>): MockWallet {
       "stake_addr",
     ]),
     ...overrides,
-  } as MockWallet;
+  };
 }
 
 describe("sign", () => {

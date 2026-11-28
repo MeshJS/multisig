@@ -30,7 +30,7 @@ export function checkEvaluation(
   for (let i = 0; i < redeemers.len(); i++) {
     const redeemer = redeemers.get(i);
     const index = Number(redeemer.index().to_str());
-    if (redeemer.tag().kind() !== 0)
+    if (redeemer.tag().kind() !== csl.RedeemerTagKind.Spend)
       throw new Error(
         "Only Plutus spending redeemers are supported by these controls.",
       );

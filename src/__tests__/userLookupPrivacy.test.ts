@@ -57,7 +57,7 @@ const walletSession = (primary: string, wallets: string[] = [primary]) =>
 const nextAuthSession = (address: string) =>
   createCaller({
     db: db as any,
-    session: { user: { id: address }, expires: new Date(Date.now() + 60_000).toISOString() } as any,
+    session: { user: { id: address }, expires: new Date(Date.now() + 60_000).toISOString() },
     sessionAddress: address,
     sessionWallets: [],
     primaryWallet: null,

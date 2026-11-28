@@ -39,6 +39,7 @@ describe("fetchDrepProfile", () => {
     metadata: () => Response | Promise<Response>;
   }) =>
     fetchMock.mockImplementation(async (input) => {
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Inspect the exact string coercion of the fetch argument supplied by this test.
       const url = String(input);
       return url.endsWith("/metadata/") ? handlers.metadata() : handlers.details();
     });
@@ -56,7 +57,7 @@ describe("fetchDrepProfile", () => {
   beforeEach(() => {
     fetchMock = jest.fn<typeof fetch>();
     global.fetch = fetchMock;
-    warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    warn = jest.spyOn(console, "warn").mockImplementation(() => { /* Intentionally inert test double. */ });
   });
   afterEach(() => {
     global.fetch = realFetch;
@@ -77,6 +78,7 @@ describe("fetchDrepProfile", () => {
     release.forEach((go) => go());
 
     await expect(pending).resolves.toEqual({ details: record, metadata: meta });
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Inspect the exact string coercion of the fetch argument supplied by this test.
     expect(fetchMock.mock.calls.map(([url]) => String(url)).sort()).toEqual([
       "https://cardano-mainnet.blockfrost.io/api/v0/governance/dreps/drep1abc",
       "https://cardano-mainnet.blockfrost.io/api/v0/governance/dreps/drep1abc/metadata/",
@@ -120,6 +122,7 @@ describe("fetchDrepProfile", () => {
     route({ details: notFound, metadata: notFound });
     await fetchDrepProfile(getBlockfrostReader(1), " drep_script1qx9 ");
     await fetchDrepProfile(getBlockfrostReader(1), "a1b2c3");
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Inspect the exact string coercion of the fetch argument supplied by this test.
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(
       "https://cardano-mainnet.blockfrost.io/api/v0/governance/dreps/drep_script1qx9",
     );

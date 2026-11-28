@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import CardUI from "@/components/ui/card-content";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle, ExternalLink, Loader, AlertCircle, RefreshCw } from "lucide-react";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useWalletsStore } from "@/lib/zustand/wallets";

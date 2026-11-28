@@ -22,7 +22,7 @@ const TX_HASH_RE = /^[0-9a-f]{64}$/;
 /** Mirrors the route's request cap. */
 const MAX_TX_HASHES = 500;
 
-const EMPTY_BADGE_MAP: Map<string, FlowBadge[]> = new Map();
+const EMPTY_BADGE_MAP = new Map<string, FlowBadge[]>();
 
 export function useTxGovernanceBadges(opts: {
   txHashes: string[];

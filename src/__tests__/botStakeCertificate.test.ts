@@ -321,6 +321,7 @@ describe("fetchVoteDelegation", () => {
     const fetchVoteDelegation = await load();
     for (const rejection of [meshRejection(404), { status: 404 }]) {
       await expect(
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         fetchVoteDelegation(provider(async () => { throw rejection; }), REWARD_ADDRESS),
       ).resolves.toBeNull();
     }
@@ -330,6 +331,7 @@ describe("fetchVoteDelegation", () => {
     const fetchVoteDelegation = await load();
     for (const rejection of [meshRejection(429), meshRejection(500), "socket hang up 404ms", new Error("boom")]) {
       await expect(
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         fetchVoteDelegation(provider(async () => { throw rejection; }), REWARD_ADDRESS),
       ).rejects.toBe(rejection);
     }

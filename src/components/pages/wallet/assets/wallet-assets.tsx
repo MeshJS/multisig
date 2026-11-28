@@ -40,7 +40,7 @@ export default function WalletAssets({ appWallet }: { appWallet: Wallet }) {
               }
               return acc;
             },
-            {} as { [key: string]: number },
+            {} as Record<string, number>,
           );
 
         const balance = Object.fromEntries(

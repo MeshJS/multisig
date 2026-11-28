@@ -15,7 +15,7 @@ const mkUtxo = (addr: string, txHash = HASH_A, idx = 0): UTxO =>
   ({
     input: { txHash, outputIndex: idx },
     output: { address: addr, amount: [{ unit: "lovelace", quantity: "3000000" }] },
-  }) as UTxO;
+  });
 
 /** Records every upstream call; each tx has `outputs` outputs at `address`. */
 function recordingProvider(outputs = 3, address = SPEND) {

@@ -32,7 +32,7 @@ function utxo(index: number, quantity: string): UTxO {
       address: SELF,
       amount: [{ unit: "lovelace", quantity }],
     },
-  } as UTxO;
+  };
 }
 
 describe("draftToTokenFlow", () => {

@@ -23,7 +23,7 @@ import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
 import useAppWallet from "@/hooks/useAppWallet";
 import { useToast } from "@/hooks/use-toast";
-import { Transaction } from "@prisma/client";
+import { type Transaction } from "@prisma/client";
 
 import { TooltipProvider, TooltipTrigger } from "@radix-ui/react-tooltip";
 

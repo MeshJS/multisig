@@ -3,7 +3,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronUp, Code2 } from "lucide-react";
 import { useState } from "react";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { getWalletType } from "@/utils/common";
 
 export function NativeScriptSection({ appWallet }: { appWallet: Wallet }) {

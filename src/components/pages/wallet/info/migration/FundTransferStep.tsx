@@ -11,7 +11,7 @@ import {
   CheckCircle,
   Send,
 } from "lucide-react";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { api } from "@/utils/api";
 import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";

@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useCallback } from "react";
-import { Signable } from "@prisma/client";
+import React, { useState, useCallback } from "react";
+import { type Signable } from "@prisma/client";
 
 import useMeshWallet from "@/hooks/useMeshWallet";
 import { sign } from "@/utils/signing";

@@ -20,6 +20,7 @@ function Error({ statusCode }: { statusCode?: number }) {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- A full reload resets potentially broken application state on the error page. */}
             <a
               href="/"
               className="inline-flex items-center justify-center rounded-md bg-zinc-900 dark:bg-zinc-50 text-zinc-50 dark:text-zinc-900 px-6 py-3 text-sm font-medium hover:opacity-90 transition-opacity"

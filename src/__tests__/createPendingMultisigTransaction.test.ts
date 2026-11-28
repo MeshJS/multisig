@@ -65,6 +65,7 @@ describe("createPendingMultisigTransaction", () => {
 
     await createPendingMultisigTransaction(db, baseArgs);
 
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(db.transaction.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         walletId: "wallet-1",
@@ -78,6 +79,7 @@ describe("createPendingMultisigTransaction", () => {
     const db = makeDb();
     await createPendingMultisigTransaction(db, { ...baseArgs, wallet: { type: "any", numRequiredSigners: 1 } });
     expect(submitTxMock).not.toHaveBeenCalled();
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(db.transaction.create).toHaveBeenCalledWith({ data: expect.objectContaining({ state: 0, txCbor: baseArgs.txCbor }) });
   });
 
@@ -89,6 +91,7 @@ describe("createPendingMultisigTransaction", () => {
       initialSignedAddresses: [],
     });
 
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(db.transaction.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         signedAddresses: [],
@@ -105,6 +108,7 @@ describe("createPendingMultisigTransaction", () => {
       initialSignedAddresses: [],
     });
 
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(db.transaction.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         signedAddresses: [],
@@ -160,6 +164,7 @@ describe("createPendingMultisigTransaction", () => {
 
     expect((db as unknown as { $transaction: jest.Mock }).$transaction).toHaveBeenCalledTimes(1);
     expect(txClient.transaction.create).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(db.transaction.create).not.toHaveBeenCalled();
     expect(afterCreate).toHaveBeenCalledWith(txClient, expect.objectContaining({ id: "tx-1" }));
     expect(result).toMatchObject({ id: "tx-1" });
@@ -203,6 +208,7 @@ describe("createPendingMultisigTransaction", () => {
     ).resolves.toBe("submitted-hash");
 
     expect(submitTxMock).toHaveBeenCalledWith("tx-cbor");
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(db.transaction.create).not.toHaveBeenCalled();
   });
 });

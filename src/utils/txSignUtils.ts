@@ -26,7 +26,7 @@ import {
 //
 // core-cst VkeyWitness.toCore() returns a [pubKeyHex, signatureHex] tuple.
 function cstVkeyPubKeyHex(vkw: { toCore: () => unknown }): string {
-  const core = vkw.toCore() as unknown;
+  const core = vkw.toCore();
   const pub = Array.isArray(core)
     ? (core[0] as string)
     : (core as { vkey: string }).vkey;
@@ -291,7 +291,7 @@ export function filterWitnessesToScripts(txHex: string): string {
   cstWitnessSet.setVkeys(
     CborSet.fromCore(
       keptVkeys.map((vkw) => vkw.toCore()),
-      VkeyWitness.fromCore,
+      (witness) => VkeyWitness.fromCore(witness),
     ),
   );
   cstTx.setWitnessSet(cstWitnessSet);

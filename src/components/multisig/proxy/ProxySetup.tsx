@@ -13,7 +13,7 @@ import {
   Play,
   Check
 } from "lucide-react";
-import { MeshTxBuilder } from "@meshsdk/core";
+import { type MeshTxBuilder } from "@meshsdk/core";
 import ProxyFlowAnimation from "./ProxyFlowAnimation";
 
 interface ProxySetupProps {

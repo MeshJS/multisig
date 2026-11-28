@@ -5,8 +5,8 @@ import {
   type IFetcher,
   type UTxO,
 } from "@meshsdk/core";
-import { Address } from "@meshsdk/core-cst";
-import type { DraftScriptInput, DraftUtxoRef, TxDraft } from "@/types/tx-draft";
+import { Address, NetworkId } from "@meshsdk/core-cst";
+import type { DraftScriptInput, TxDraft } from "@/types/tx-draft";
 import type { DraftIssue } from "./validate";
 import {
   scriptSchema,
@@ -98,7 +98,7 @@ export async function resolveScriptInput(
     if (
       !live.output.address.startsWith("addr") ||
       Address.fromBech32(live.output.address).getNetworkId() !==
-        (network === 1 ? 1 : 0)
+        (network === 1 ? NetworkId.Mainnet : NetworkId.Testnet)
     ) {
       issue(
         "script-input-network",

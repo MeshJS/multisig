@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { audit } from "@/lib/observability/audit";
 import { assertWalletAccess } from "@/server/api/auth";
-import { MCP_SCOPES, isMcpScope } from "@/lib/mcp/scopes";
+import { MCP_SCOPES } from "@/lib/mcp/scopes";
 
 /** Mirrors MCP_TOOL_ACTION in src/lib/mcp/server.ts. Duplicated rather than
  *  imported: that module pulls the MCP SDK and the whole tool registry, which

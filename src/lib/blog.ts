@@ -47,7 +47,7 @@ function parseFrontmatter(raw: string): {
   content: string;
 } {
   const normalized = raw.replace(/\r\n/g, "\n");
-  const match = normalized.match(/^---\n([\s\S]*?)\n---\n?/);
+  const match = /^---\n([\s\S]*?)\n---\n?/.exec(normalized);
   if (!match) return { data: {}, content: normalized.trim() };
 
   const data: Record<string, string | string[]> = {};

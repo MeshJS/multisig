@@ -13,7 +13,7 @@ import { api } from "@/utils/api";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import CardUI from "@/components/ui/card-content";
-import { MoreVertical, Signature } from "lucide-react";
+import { Signature } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -213,7 +213,7 @@ export default function WalletSigning() {
             {pendingSignables.map((sig) => (
               <SignableCard
                 key={sig.id}
-                walletId={appWallet!.id}
+                walletId={appWallet.id}
                 signable={sig}
               />
             ))}
@@ -228,7 +228,7 @@ export default function WalletSigning() {
             {completeSignables.map((sig) => (
               <SignableCard
                 key={sig.id}
-                walletId={appWallet!.id}
+                walletId={appWallet.id}
                 signable={sig}
               />
             ))}

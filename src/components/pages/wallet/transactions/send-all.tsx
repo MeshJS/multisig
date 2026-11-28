@@ -1,5 +1,5 @@
 import { Loader, Send } from "lucide-react";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import CardUI from "@/components/ui/card-content";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";

@@ -1,5 +1,5 @@
-import { NativeScript } from "@meshsdk/core";
-import { Wallet as DbWallet } from "@prisma/client";
+import { type NativeScript } from "@meshsdk/core";
+import { type Wallet as DbWallet } from "@prisma/client";
 
 export interface RawImportBodiesUser {
   ada_handle?: string;

@@ -1,7 +1,8 @@
-import { fixupConfigRules } from "@eslint/compat";
 import { FlatCompat } from "@eslint/eslintrc";
 import js from "@eslint/js";
 import typescriptParser from "@typescript-eslint/parser";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import preprodDeferred from "./eslint.preprod-deferred.mjs";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -14,15 +15,13 @@ const compat = new FlatCompat({
 });
 
 export default [
-  ...fixupConfigRules(
-    compat.extends(
-      "next/core-web-vitals",
-      "plugin:@typescript-eslint/recommended-type-checked",
-      "plugin:@typescript-eslint/stylistic-type-checked"
-    )
+  ...nextVitals,
+  ...compat.extends(
+    "plugin:@typescript-eslint/recommended-type-checked",
+    "plugin:@typescript-eslint/stylistic-type-checked",
   ),
   {
-    files: ["**/*.{js,jsx,ts,tsx}"],
+    files: ["**/*.{js,jsx,cjs,ts,tsx}"],
     languageOptions: {
       parser: typescriptParser,
       parserOptions: {
@@ -74,7 +73,6 @@ export default [
       "@typescript-eslint/no-floating-promises": "warn",
       "@typescript-eslint/prefer-for-of": "warn",
       "@typescript-eslint/non-nullable-type-assertion-style": "warn",
-      "react/no-unescaped-entities": "warn",
       "@typescript-eslint/no-empty-object-type": "warn",
       "@typescript-eslint/prefer-nullish-coalescing": "warn",
       "@typescript-eslint/no-inferrable-types": "warn",
@@ -93,5 +91,12 @@ export default [
       "@typescript-eslint/restrict-template-expressions": "warn",
     },
   },
+  {
+    files: ["**/*.{jsx,tsx}"],
+    rules: {
+      "react/no-unescaped-entities": "warn",
+    },
+  },
+  ...preprodDeferred,
 ];
 

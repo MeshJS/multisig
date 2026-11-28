@@ -1,4 +1,4 @@
-import { riskReviewBinding, walletRiskContext } from "@/lib/tx-review/risk";
+
 import type { RiskAssessment } from "@/lib/tx-risk/types";
 const riskFixture = (txHash = "beef"): RiskAssessment => ({
   version: 1,

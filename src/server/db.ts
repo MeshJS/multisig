@@ -174,7 +174,7 @@ const createRetryProxy = <T extends object>(target: T): T => {
       
       return value;
     },
-  }) as T;
+  });
 };
 
 // Export db with retry logic
@@ -190,13 +190,13 @@ if (typeof process !== "undefined") {
     }
   };
 
-  process.on("beforeExit", disconnect);
-  process.on("SIGINT", async () => {
-    await disconnect();
-    process.exit(0);
+  process.on("beforeExit", () => {
+    void disconnect();
   });
-  process.on("SIGTERM", async () => {
-    await disconnect();
-    process.exit(0);
+  process.on("SIGINT", () => {
+    void disconnect().then(() => process.exit(0));
+  });
+  process.on("SIGTERM", () => {
+    void disconnect().then(() => process.exit(0));
   });
 }

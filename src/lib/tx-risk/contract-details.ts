@@ -142,6 +142,7 @@ export function readContractDetails(
   const scripts = items(witnesses.plutus_scripts()).map((script) => ({
     hash: script.hash().to_hex(),
     language: (["V1", "V2", "V3"] as const)[script.language_version().kind()],
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- Keep the array's source union wide enough for reference/spending inputs pushed below.
     source: "witness" as ContractSpend["scriptSource"],
     ref: undefined as DraftUtxoRef | undefined,
   }));

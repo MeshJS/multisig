@@ -6,7 +6,7 @@ import { useSiteStore } from "@/lib/zustand/site";
 import { useRouter } from "next/router";
 import sendDiscordMessage from "@/lib/discord/sendDiscordMessage";
 import { api } from "@/utils/api";
-import { getFile, hashDrepAnchor, UTxO } from "@meshsdk/core";
+import { getFile, hashDrepAnchor, type UTxO } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import useTransaction from "@/hooks/useTransaction";
 import { getProvider } from "@/utils/get-provider";

@@ -137,6 +137,7 @@ describe("drepVotes API", () => {
       proposalTitle: "Fund the treasury thing",
       proposalType: "treasury_withdrawals",
     });
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(res.setHeader).toHaveBeenCalledWith(
       "Cache-Control",
       expect.stringContaining("s-maxage"),

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import SectionTitle from "@/components/ui/section-title";
 import Pagination from "@/components/common/overall-layout/pagination";
 import { getBlockfrostReader as getProvider } from "@/utils/blockfrost-get";
-import { BlockfrostDrepInfo, BlockfrostDrepMetadata } from "@/types/governance";
+import { type BlockfrostDrepInfo, type BlockfrostDrepMetadata } from "@/types/governance";
 import { fetchDrepProfile } from "@/lib/governance/drep-profile";
 import Link from "next/link";
 import usePublicNetwork from "@/hooks/usePublicNetwork";
@@ -53,7 +53,7 @@ export default function DrepOverviewPage() {
           // Rows render from the list straight away; each fills in its record
           // and metadata as they arrive.
           response.forEach((drep: BlockfrostDrepInfo) =>
-            fetchDrepDetails(drep.drep_id),
+            void fetchDrepDetails(drep.drep_id),
           );
           setIsLastPage(response.length < pageSize);
         } else {

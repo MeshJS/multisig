@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 const { sign } = jwt;
 import {
   checkSignature,
-  DataSignature,
+  type DataSignature,
 } from "@meshsdk/core";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit, enforceBodySize } from "@/lib/security/requestGuards";

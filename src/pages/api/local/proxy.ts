@@ -38,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
   
   // At this point, src is guaranteed to be a string
-  const validatedSrc = src as string;
+  const validatedSrc = src!;
   
   if (!isAllowedDomain(validatedSrc)) {
     return res.status(400).json({ error: "Domain not allowed" });

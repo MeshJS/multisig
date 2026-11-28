@@ -3,7 +3,7 @@ import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit, applyBotRateLimit, applyAddressRateLimit } from "@/lib/security/requestGuards";
-import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
+import { parseScope, scopeIncludes } from "@/lib/auth/botKey";
 import { getProposalStatus } from "@/lib/governance";
 import { getProviderErrorStatus } from "@/lib/server/providerErrors";
 import {
@@ -109,7 +109,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: "Bot not found" });
     }
     const scopes = parseScope(botUser.botKey.scope);
-    if (!scopeIncludes(scopes, REQUIRED_SCOPE as BotScope)) {
+    if (!scopeIncludes(scopes, REQUIRED_SCOPE)) {
       return res.status(403).json({ error: "Insufficient scope: governance:read required" });
     }
   } else if (!applyAddressRateLimit(req, res, payload.address)) {

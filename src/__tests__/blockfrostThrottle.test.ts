@@ -60,6 +60,7 @@ describe("createBlockfrostThrottle", () => {
     const provider = {
       get: async () => {
         calls++;
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         if (calls < 3) throw CORS_BLOCKED;
         return "ok";
       },
@@ -74,6 +75,7 @@ describe("createBlockfrostThrottle", () => {
     const provider = {
       get: async () => {
         calls++;
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         throw NOT_FOUND;
       },
     };
@@ -91,6 +93,7 @@ describe("createBlockfrostThrottle", () => {
     const provider = {
       get: async () => {
         calls++;
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         throw RATE_LIMITED;
       },
     };
@@ -113,6 +116,7 @@ describe("createBlockfrostThrottle", () => {
     const provider = {
       get: async () => {
         const next = answers.shift();
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Exercise the provider's actual non-Error rejection shape, including identity checks.
         if (next !== "ok") throw next;
         return next;
       },

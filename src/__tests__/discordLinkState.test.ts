@@ -69,6 +69,7 @@ const json = (body: unknown, status = 200) =>
 /** Discord answers the token exchange, /users/@me and the guild check. */
 function discordAnswers(discordId = "424242") {
   fetchMock.mockImplementation(async (input) => {
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string -- Inspect the exact string coercion of the fetch argument supplied by this test.
     const url = String(input);
     if (url.endsWith("/oauth2/token")) return json({ access_token: "discord-at" });
     if (url.endsWith("/users/@me")) return json({ id: discordId });
@@ -95,7 +96,7 @@ const callbackRequest = (
 beforeAll(async () => {
   process.env.JWT_SECRET = SECRET;
   process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID = "client-id";
-  global.fetch = fetchMock as unknown as typeof fetch;
+  global.fetch = fetchMock;
   lib = await import("@/lib/auth/discordLinkState");
   ({ verifyJwt } = await import("@/lib/verifyJwt"));
   ({ default: start } = await import("../pages/api/auth/discord/start"));
@@ -206,6 +207,7 @@ describe("GET /api/auth/discord/callback", () => {
     getWalletSessionFromReq.mockReturnValue({ wallets: [ALICE], primaryWallet: ALICE });
     const res = response();
     await callback(callbackRequest(lib.mintDiscordLinkState(MALLORY)), res);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(res.setHeader).toHaveBeenCalledWith(
       "Set-Cookie",
       expect.stringMatching(/^discord_link_nonce=;.*Max-Age=0/),
@@ -247,6 +249,7 @@ describe("GET /api/auth/discord/callback", () => {
       where: { address: ALICE },
       data: { discordId: "424242" },
     });
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(res.redirect).toHaveBeenCalledWith("/");
   });
 
@@ -269,6 +272,7 @@ describe("GET /api/auth/discord/callback", () => {
     await callback(callbackRequest(lib.mintDiscordLinkState(ALICE)), res);
 
     expect(res.statusCode).toBe(404);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Inspect this mock's call history without invoking the detached method.
     expect(res.redirect).not.toHaveBeenCalled();
   });
 });

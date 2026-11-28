@@ -5,11 +5,11 @@ import { useEffect, useState } from "react";
 import { getProvider } from "@/utils/get-provider";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { api } from "@/utils/api";
-import { OnChainTransaction, TxInfo } from "@/types/transaction";
+import { type OnChainTransaction, type TxInfo } from "@/types/transaction";
 import { useSiteStore } from "@/lib/zustand/site";
-import { Asset } from "@meshsdk/core";
+import { type Asset } from "@meshsdk/core";
 import { getDRepIds } from "@meshsdk/core-cst";
-import { BlockfrostDrepInfo } from "@/types/governance";
+import { type BlockfrostDrepInfo } from "@/types/governance";
 import { Button } from "@/components/ui/button";
 import { useProxyActions } from "@/lib/zustand/proxy";
 // WalletAuthModal is now handled in layout.tsx to avoid duplicate prompts

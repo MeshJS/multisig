@@ -4,16 +4,16 @@ import { useRouter } from "next/router";
 import {
   keepRelevant,
   NativeScript,
-  Quantity,
+  type Quantity,
   resolvePaymentKeyHash,
-  Unit,
-  UTxO,
+  type Unit,
+  type UTxO,
 } from "@meshsdk/core";
 import { useWallet } from "@meshsdk/react";
 import useActiveWallet from "@/hooks/useActiveWallet";
 
 import useTransaction from "@/hooks/useTransaction";
-import { toast, useToast } from "@/hooks/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import useAppWallet from "@/hooks/useAppWallet";
 import useMultisigWallet from "@/hooks/useMultisigWallet";
 
@@ -645,7 +645,7 @@ export default function PageNewTransaction({ onSuccess }: { onSuccess?: () => vo
       appWallet?.signersAddresses &&
       appWallet.signersAddresses[signerIndex]
     ) {
-      const signerAddress = appWallet.signersAddresses[signerIndex]!;
+      const signerAddress = appWallet.signersAddresses[signerIndex];
       setRecipientAddresses([...recipientAddresses, signerAddress]);
       setAmounts([...amounts, ""]);
       setAssets([...assets, "lovelace"]);

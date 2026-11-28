@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { MultisigWallet, MultisigKey } from '../utils/multisigSDK';
+import { MultisigWallet, type MultisigKey } from '../utils/multisigSDK';
 import {
   mockPaymentKeys,
   mockStakeKeys,

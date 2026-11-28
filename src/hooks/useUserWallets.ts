@@ -2,7 +2,7 @@ import { useUserStore } from "@/lib/zustand/user";
 import { useSiteStore } from "@/lib/zustand/site";
 import { api } from "@/utils/api";
 import { buildWallet } from "@/utils/common";
-import { DbWalletWithLegacy } from "@/types/wallet";
+import { type DbWalletWithLegacy } from "@/types/wallet";
 import { useMemo } from "react";
 
 export default function useUserWallets() {

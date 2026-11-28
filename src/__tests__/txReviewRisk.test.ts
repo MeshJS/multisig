@@ -78,7 +78,7 @@ jest.mock("@/lib/tx-review/metadata", () => ({
   resolvePoolNames: async () => () => "",
   resolveProposalTitles: async () => () => "",
 }));
-jest.mock("@/lib/observability/audit", () => ({ audit: async () => {} }));
+jest.mock("@/lib/observability/audit", () => ({ audit: async () => { /* Intentionally inert test double. */ } }));
 
 const caller = {
   subject: address("key"),

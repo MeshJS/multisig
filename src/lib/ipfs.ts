@@ -166,9 +166,11 @@ function retryAfterMs(res: Response): number {
 
 function abortableDelay(ms: number, signal: AbortSignal | undefined): Promise<void> {
   return new Promise((resolve, reject) => {
+    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- AbortSignal permits arbitrary reasons; preserve the caller's exact cancellation reason.
     if (signal?.aborted) return reject(signal.reason);
     const onAbort = () => {
       clearTimeout(timer);
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- AbortSignal permits arbitrary reasons; preserve the caller's exact cancellation reason.
       reject(signal?.reason);
     };
     const timer = setTimeout(() => {

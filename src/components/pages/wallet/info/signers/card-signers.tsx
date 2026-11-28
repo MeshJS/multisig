@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, MoreVertical, X } from "lucide-react";
+import { MoreVertical } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +10,7 @@ import CardUI from "@/components/ui/card-content";
 import { Button } from "@/components/ui/button";
 import EditSigners from "./card-edit-signers";
 import ShowSigners from "./card-show-signers";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 
 export default function CardSigners({ appWallet }: { appWallet: Wallet }) {
   const [showEdit, setShowEdit] = useState(false);

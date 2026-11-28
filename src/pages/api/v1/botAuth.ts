@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 const { sign } = jwt;
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyStrictRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
-import { verifyBotKeySecret, parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
+import { verifyBotKeySecret, parseScope, scopeIncludes } from "@/lib/auth/botKey";
 import {
   boundAddressNetworkId,
   checkBotPaymentAddress,
@@ -61,7 +61,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const scopes = parseScope(botKey.scope);
-  if (!scopeIncludes(scopes, MIN_SCOPE as BotScope)) {
+  if (!scopeIncludes(scopes, MIN_SCOPE)) {
     return res.status(403).json({ error: "Insufficient scope" });
   }
 

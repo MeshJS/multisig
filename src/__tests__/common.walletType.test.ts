@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { getWalletType } from "@/utils/common";
-import { DbWalletWithLegacy } from "@/types/wallet";
+import { type DbWalletWithLegacy } from "@/types/wallet";
 
 function makeWallet(overrides: Partial<DbWalletWithLegacy> = {}): DbWalletWithLegacy {
   return {

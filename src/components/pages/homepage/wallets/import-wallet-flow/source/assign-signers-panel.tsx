@@ -252,7 +252,7 @@ export default function AssignSignersPanel({
                       from registration
                     </Badge>
                     <code className="text-muted-foreground">
-                      {getFirstAndLast(recoveredSlots[index]!, 12, 8)}
+                      {getFirstAndLast(recoveredSlots[index], 12, 8)}
                     </code>
                   </>
                 ) : (

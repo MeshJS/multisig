@@ -3,7 +3,7 @@ import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
 import { applyRateLimit, applyBotRateLimit, enforceBodySize } from "@/lib/security/requestGuards";
-import { parseScope, scopeIncludes, type BotScope } from "@/lib/auth/botKey";
+import { parseScope, scopeIncludes } from "@/lib/auth/botKey";
 import { MultisigWallet, type MultisigKey } from "@/utils/multisigSDK";
 import {
   collectSigKeyHashes,
@@ -137,7 +137,7 @@ export default async function handler(
   }
 
   const scopes = parseScope(botUser.botKey.scope);
-  if (!scopeIncludes(scopes, CREATE_SCOPE as BotScope)) {
+  if (!scopeIncludes(scopes, CREATE_SCOPE)) {
     return res.status(403).json({ error: "Insufficient scope: multisig:create required" });
   }
 

@@ -239,7 +239,7 @@ function parseInput(raw: string): { origin: string; walletId?: string } | null {
     return null;
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-  const walletMatch = url.pathname.match(/\/wallets\/([^/?#]+)/);
+  const walletMatch = /\/wallets\/([^/?#]+)/.exec(url.pathname);
   return {
     origin: url.origin,
     walletId: walletMatch ? walletMatch[1] : undefined,

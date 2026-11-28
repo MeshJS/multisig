@@ -1,4 +1,4 @@
-import { TRPCError } from "@trpc/server";
+import { type TRPCError } from "@trpc/server";
 
 import type { AnnotatedTask } from "@/server/api/routers/tasks";
 

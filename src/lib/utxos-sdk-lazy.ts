@@ -33,6 +33,7 @@ export function loadUtxosSdk(): Promise<typeof Real> {
   // resolve it; the cast restores the real module's type.
   loading ??= (
     import(
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- Widen the bundler-only alias so TypeScript does not resolve it as a package.
       /* webpackChunkName: "utxos-sdk" */ "@utxos/sdk-real" as string
     ) as Promise<typeof Real>
   ).then(

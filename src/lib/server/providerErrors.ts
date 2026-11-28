@@ -8,7 +8,7 @@ export function getProviderErrorStatus(error: unknown): number | undefined {
   }
 
   if (error instanceof Error && error.message) {
-    const match = error.message.match(/\b(4\d{2}|5\d{2})\b/);
+    const match = /\b(4\d{2}|5\d{2})\b/.exec(error.message);
     if (match?.[1]) return Number(match[1]);
     try {
       return getProviderErrorStatus(JSON.parse(error.message));

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import {
   Table,
   TableBody,
@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { getProvider } from "@/utils/get-provider";
 import usePendingTransactions from "@/hooks/usePendingTransactions";
 import { Toggle } from "@/components/ui/toggle";
-import { UTxO } from "@meshsdk/core";
+import { type UTxO } from "@meshsdk/core";
 import { cn } from "@/lib/utils";
 import { useWalletsStore } from "@/lib/zustand/wallets";
 import { Button } from "@/components/ui/button";
@@ -355,7 +355,7 @@ export default function UTxOSelector({
         });
       }
       return acc;
-    }, {} as { [unit: string]: number });
+    }, {} as Record<string, number>);
   }, [selectedUtxos]);
 
   // Count available vs blocked UTxOs
@@ -379,7 +379,7 @@ export default function UTxOSelector({
         });
       }
       return acc;
-    }, {} as { [unit: string]: number });
+    }, {} as Record<string, number>);
 
     // Calculate required funds from recipients
     const requiredFunds = recipientAmounts.reduce((acc, amount, index) => {
@@ -396,7 +396,7 @@ export default function UTxOSelector({
       }
       acc[unit] += requiredAmount;
       return acc;
-    }, {} as { [unit: string]: number });
+    }, {} as Record<string, number>);
 
     // Check if any required amount exceeds available
     return Object.keys(requiredFunds).some((unit) => {
@@ -916,7 +916,7 @@ function FundsSummaryContent({
   selectedUtxos: UTxO[];
   recipientAmounts: string[];
   recipientAssets: string[];
-  walletAssetMetadata: { [key: string]: { assetName: string; decimals: number; ticker?: string } };
+  walletAssetMetadata: Record<string, { assetName: string; decimals: number; ticker?: string }>;
 }) {
   // Calculate available funds from selected UTxOs
   const availableFunds = selectedUtxos.reduce((acc, utxo) => {
@@ -930,7 +930,7 @@ function FundsSummaryContent({
       acc[unit] += parseFloat(quantity);
     });
     return acc;
-  }, {} as { [unit: string]: number });
+  }, {} as Record<string, number>);
 
   // Calculate required funds from recipients
   const requiredFunds = recipientAmounts.reduce((acc, amount, index) => {
@@ -947,7 +947,7 @@ function FundsSummaryContent({
     }
     acc[unit] += requiredAmount;
     return acc;
-  }, {} as { [unit: string]: number });
+  }, {} as Record<string, number>);
 
   // Get all unique units
   const allUnits = new Set([...Object.keys(availableFunds), ...Object.keys(requiredFunds)]);

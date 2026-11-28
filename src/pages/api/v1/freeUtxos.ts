@@ -10,7 +10,7 @@ import type { UTxO } from "@meshsdk/core";
 import { createCaller } from "@/server/api/root";
 import { db } from "@/server/db";
 import { verifyJwt, isBotJwt } from "@/lib/verifyJwt";
-import { DbWalletWithLegacy } from "@/types/wallet";
+import { type DbWalletWithLegacy } from "@/types/wallet";
 import { applyRateLimit, applyBotRateLimit } from "@/lib/security/requestGuards";
 import { getClientIP } from "@/lib/security/rateLimit";
 import { assertBotWalletAccess, getBotWalletAccess } from "@/lib/auth/botAccess";

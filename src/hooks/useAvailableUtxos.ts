@@ -1,5 +1,5 @@
 import { api } from "@/utils/api";
-import { UTxO } from "@meshsdk/core";
+import { type UTxO } from "@meshsdk/core";
 
 import { deriveBlockedUtxoRefs } from "@/utils/blockedUtxoRefs";
 

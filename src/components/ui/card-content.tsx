@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import React, { ReactNode } from "react";
+import React, { type ReactNode } from "react";
 
 export default function CardUI({
   children,

@@ -17,7 +17,7 @@ const mkUtxo = (
   ({
     input: { txHash, outputIndex },
     output: { address, amount },
-  }) as UTxO;
+  });
 
 describe("proxyUtxos", () => {
   it("refuses a ref whose txHash is not a transaction hash, before any chain call", async () => {

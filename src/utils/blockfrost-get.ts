@@ -28,6 +28,7 @@ export function getBlockfrostReader(network: number): BlockfrostReader {
       try {
         response = await fetch(url, { headers: { project_id: projectId } });
       } catch (error) {
+        // eslint-disable-next-line @typescript-eslint/only-throw-error -- Preserve the Mesh-compatible rejection payload consumed by provider error/status handlers.
         throw JSON.stringify({
           message: error instanceof Error ? error.message : String(error),
         });
@@ -42,6 +43,7 @@ export function getBlockfrostReader(network: number): BlockfrostReader {
       if (response.status === 200 || response.status === 202) {
         return data as never;
       }
+      // eslint-disable-next-line @typescript-eslint/only-throw-error -- Preserve the Mesh-compatible rejection payload consumed by provider error/status handlers.
       throw JSON.stringify({
         data,
         headers: Object.fromEntries(response.headers.entries()),

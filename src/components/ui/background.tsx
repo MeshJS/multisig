@@ -188,7 +188,7 @@ const Background = React.forwardRef<HTMLDivElement, BackgroundProps>(
     const parallaxOn = (parallax ?? isAnimated) && !reduced
     const rootRef = React.useRef<HTMLDivElement | null>(null)
 
-    React.useImperativeHandle(ref, () => rootRef.current as HTMLDivElement)
+    React.useImperativeHandle(ref, () => rootRef.current!)
 
     // Mouse-reactive parallax: publish the normalized cursor offset (-1..1) as
     // CSS variables the orb/sheen layers read. rAF-throttled and pointer-passive,

@@ -55,7 +55,7 @@ function utxo(index: number, address: string, lovelace: string): UTxO {
   return {
     input: { txHash: "b".repeat(64), outputIndex: index },
     output: { address, amount: [{ unit: "lovelace", quantity: lovelace }] },
-  } as UTxO;
+  };
 }
 
 function sendDraft(source?: TxDraft["source"]): TxDraft {

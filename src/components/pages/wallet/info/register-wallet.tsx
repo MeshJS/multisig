@@ -11,14 +11,14 @@ import useTransaction from "@/hooks/useTransaction";
 import useWalletRegistration from "@/hooks/useWalletRegistration";
 import { useSiteStore } from "@/lib/zustand/site";
 import { useWalletsStore } from "@/lib/zustand/wallets";
-import { Wallet } from "@/types/wallet";
+import { type Wallet } from "@/types/wallet";
 import { api } from "@/utils/api";
 import {
   buildLabel1854Metadata,
   isRegistrationUpToDate,
 } from "@/utils/cip146Registration";
 import { getTxBuilder } from "@/utils/get-tx-builder";
-import { MultisigWallet } from "@/utils/multisigSDK";
+import { type MultisigWallet } from "@/utils/multisigSDK";
 
 export const REGISTRATION_TX_DESCRIPTION = "CIP-0146 wallet registration";
 

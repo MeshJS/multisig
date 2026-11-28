@@ -95,7 +95,7 @@ describe("build-time script resolution preserves embedded CBOR", () => {
   });
 
   test("missing scriptCbor stays undefined-safe", () => {
-    const appWallet = wallet({ scriptCbor: undefined as unknown as string });
+    const appWallet = wallet({ scriptCbor: undefined });
     expect(embeddedScript(appWallet)).toBeUndefined();
   });
 });

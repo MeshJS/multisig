@@ -9,7 +9,7 @@ import {
 import BallotCard from "./ballot";
 import type { UTxO } from "@meshsdk/core";
 import { Vote as VoteIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+
 
 interface BallotModalProps {
   appWallet: any;

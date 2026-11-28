@@ -1,19 +1,17 @@
-import { Asset } from "@meshsdk/core";
-import { User } from "@prisma/client";
+import { type Asset } from "@meshsdk/core";
+import { type User } from "@prisma/client";
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+import { persist } from "zustand/middleware";
 
 interface UserState {
   userAddress: string | undefined;
   setUserAddress: (address: string | undefined) => void;
   userAssets: Asset[];
   setUserAssets: (assets: Asset[]) => void;
-  userAssetMetadata: {
-    [policyId: string]: {
+  userAssetMetadata: Record<string, {
       assetName: string;
       decimals: number;
-    };
-  };
+    }>;
   setUserAssetMetadata: (
     policyId: string,
     assetName: string,

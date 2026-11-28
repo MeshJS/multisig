@@ -32,9 +32,9 @@ export function applyDRepCert(
   }
 
   if (action === "register") {
-    txBuilder.drepRegistrationCertificate(dRepId, anchor!);
+    txBuilder.drepRegistrationCertificate(dRepId, anchor);
   } else if (action === "update") {
-    txBuilder.drepUpdateCertificate(dRepId, anchor!);
+    txBuilder.drepUpdateCertificate(dRepId, anchor);
   } else {
     txBuilder.drepDeregistrationCertificate(dRepId);
   }

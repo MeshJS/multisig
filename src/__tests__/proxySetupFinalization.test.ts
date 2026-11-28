@@ -23,7 +23,7 @@ const mkUtxo = (
   ({
     input: { txHash, outputIndex },
     output: { address, amount },
-  }) as UTxO;
+  });
 
 function createDb(existingProxy?: unknown) {
   return {

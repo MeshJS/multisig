@@ -121,13 +121,13 @@ function createProvider(args: {
       },
     ]),
     get: jest.fn(async (path: string) => {
-      const assetMatch = path.match(/^\/assets\/([^/]+)\/history/);
+      const assetMatch = /^\/assets\/([^/]+)\/history/.exec(path);
       if (assetMatch) {
         const assetUnit = decodeURIComponent(assetMatch[1]!);
         return args.histories?.[assetUnit] ?? [];
       }
 
-      const txMatch = path.match(/^\/txs\/([^/]+)\/utxos$/);
+      const txMatch = /^\/txs\/([^/]+)\/utxos$/.exec(path);
       if (txMatch) {
         const txHash = decodeURIComponent(txMatch[1]!);
         if (args.txErrors?.includes(txHash)) {

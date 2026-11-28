@@ -146,7 +146,7 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
                 }
             }
         } catch (e) {
-            // eslint-disable-next-line no-console
+
             console.warn("Failed to derive users from stakeCbor fallback:", e);
         }
     }
@@ -328,7 +328,7 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
         try {
             const decoded = decodeNativeScriptFromCbor(providedPaymentCbor);
             // Log the decoded native script structure for visibility/debugging
-            // eslint-disable-next-line no-console
+
             console.log("Imported payment native script (decoded):", JSON.stringify(decoded, null, 2));
             requiredFromPaymentScript = computeRequiredSigners(decoded);
             // Determine script type by inspecting parents of "sig" leaves.
@@ -336,7 +336,7 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
             scriptTypeFromPaymentScript = detectTypeFromSigParents(decoded);
             isPaymentHierarchical = isHierarchicalScript(decoded);
             paymentSigKeyHashes = collectSigKeyHashes(decoded);
-            // eslint-disable-next-line no-console
+
             console.log("Payment script sig key hashes:", paymentSigKeyHashes);
             // Build stake addresses early so we can expand candidate payment addresses via stake keys
             const stakeAddressesUsedForExpansion = buildStakeAddressesFromHashes(signerStakeKeys, network);
@@ -347,10 +347,10 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
                 stakeAddressesUsedForExpansion,
                 network,
             );
-            // eslint-disable-next-line no-console
+
             console.log("Payment sig match results:", JSON.stringify(paymentSigMatches, null, 2));
         } catch (e) {
-            // eslint-disable-next-line no-console
+
             console.warn("Failed to decode provided payment_script CBOR:", e);
         }
     }
@@ -365,17 +365,17 @@ export async function validateMultisigImportPayload(payload: unknown): Promise<V
     if (providedStakeCbor) {
         try {
             const decodedStake = decodeNativeScriptFromCbor(providedStakeCbor);
-            // eslint-disable-next-line no-console
+
             console.log("Imported stake native script (decoded):", JSON.stringify(decodedStake, null, 2));
             isStakeHierarchical = isHierarchicalScript(decodedStake);
             stakeSigKeyHashes = collectSigKeyHashes(decodedStake);
-            // eslint-disable-next-line no-console
+
             console.log("Stake script sig key hashes:", stakeSigKeyHashes);
             stakeSigMatches = matchStakeSigs(stakeSigKeyHashes, signerStakeKeys);
-            // eslint-disable-next-line no-console
+
             console.log("Stake sig match results:", JSON.stringify(stakeSigMatches, null, 2));
         } catch (e) {
-            // eslint-disable-next-line no-console
+
             console.warn("Failed to decode provided stake_script CBOR:", e);
         }
     }

@@ -1,11 +1,11 @@
 import CardUI from "@/components/ui/card-content";
 import UTxOSelector from "@/components/pages/wallet/new-transaction/utxoSelector";
-import { StakingInfo } from "../stakingInfoCard";
-import { Wallet } from "@/types/wallet";
+import { type StakingInfo } from "../stakingInfoCard";
+import { type Wallet } from "@/types/wallet";
 import StakeButton from "./stake";
-import { UTxO } from "@meshsdk/core";
+import { type UTxO } from "@meshsdk/core";
 import { useState } from "react";
-import { MultisigWallet } from "@/utils/multisigSDK";
+import { type MultisigWallet } from "@/utils/multisigSDK";
 
 export default function StakingActionCard({
   stakingInfo,

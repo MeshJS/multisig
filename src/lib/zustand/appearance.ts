@@ -61,7 +61,7 @@ export const useAppearanceStore = create<AppearanceState>()(
       // `full`: the whole point of this migration is that the old blanket
       // "on" was too heavy for some of the devices that had it.
       migrate: (persisted, version) => {
-        if (version >= 2) return persisted as AppearanceState;
+        if (version >= 2) return persisted;
         const legacy = persisted as Partial<{
           backgroundEnabled: boolean;
           backgroundPreset: BackgroundPreset;
@@ -69,7 +69,7 @@ export const useAppearanceStore = create<AppearanceState>()(
         return {
           backgroundMode: legacy?.backgroundEnabled === false ? "off" : "auto",
           backgroundPreset: legacy?.backgroundPreset ?? "aurora",
-        } as AppearanceState;
+        };
       },
     },
   ),
