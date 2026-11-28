@@ -1,4 +1,6 @@
 import { cors, addCorsCacheBustingHeaders } from "@/lib/cors";
+import { bearerMatchesSecret } from "@/lib/security/bearerSecret";
+import { applyStrictRateLimit } from "@/lib/security/requestGuards";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { db } from "@/server/db";
 import { buildWallet } from "@/utils/common";
@@ -108,17 +110,25 @@ export default async function handler(
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  // Verify authentication for all requests
-  const authToken = req.headers.authorization?.replace('Bearer ', '');
+  // The only caller is the daily-balance-snapshots workflow (via
+  // scripts/batch-snapshot-orchestrator.ts), which sends `Bearer <token>`.
   const expectedToken = process.env.SNAPSHOT_AUTH_TOKEN;
-  
+
   if (!expectedToken) {
     console.error('SNAPSHOT_AUTH_TOKEN environment variable not set');
     return res.status(500).json({ error: "Server configuration error" });
   }
-  
-  if (!authToken || authToken !== expectedToken) {
-    return res.status(401).json({ error: "Unauthorized" });
+
+  // Constant-time, and the header must actually be a Bearer token: the old
+  // `replace('Bearer ', '')` also let a bare token through. Only failed attempts
+  // count against the limit, so guesses from a shared runner IP can never 429
+  // the real workflow (the orchestrator's three 10s retries would all land in
+  // the same 60s window, so a 429 would fail the batch).
+  if (!bearerMatchesSecret(req.headers.authorization, expectedToken)) {
+    if (applyStrictRateLimit(req, res, { keySuffix: "v1/stats/run-snapshots-batch" })) {
+      res.status(401).json({ error: "Unauthorized" });
+    }
+    return;
   }
 
   const { batchId, batchNumber, batchSize } = req.query;
